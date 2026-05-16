@@ -2068,6 +2068,39 @@ $ProcessDetailsHtml
             $SafeLabel = ConvertTo-HtmlSafeText $Item.Label
             $SafeAnchor = ConvertTo-HtmlSafeText $Item.Anchor
 
+            # v0.24 Part 2:
+            # System is the first sidebar section to use native, no-JavaScript
+            # parent/child navigation. The parent row expands or collapses the
+            # System tree, while the child links jump to the System snapshot and
+            # detail anchors.
+            #
+            # Important:
+            # - This is HTML presentation only.
+            # - It does not rerun checks.
+            # - It does not change readiness scoring.
+            # - It does not change console output or TXT report output.
+            if ($Item.Label -eq "System" -and $Item.ShowStatus -and $ReadinessByName.ContainsKey($Item.Label)) {
+                $Card = $ReadinessByName[$Item.Label]
+                $SafeStatus = ConvertTo-HtmlSafeText $Card.Status
+                $SegmentsHtml = New-ArcForgeSidebarStatusSegmentsHtml -Status $Card.Status
+
+                $NavigationLinks += @"
+                <details class="sidebar-section-group" open>
+                    <summary class="sidebar-section-summary" title="$SafeLabel readiness: $SafeStatus" aria-label="$SafeLabel readiness: $SafeStatus">
+                        <span class="sidebar-section-summary-label">$SafeLabel</span>
+                        <span class="sidebar-status-segments" aria-hidden="true">$SegmentsHtml</span>
+                    </summary>
+                    <a class="sidebar-section-subitem" href="#$SafeAnchor">System Overview</a>
+                    <a class="sidebar-section-subitem" href="#system-endpoint-platform-details">Endpoint Platform Details</a>
+                    <a class="sidebar-section-subitem" href="#system-vital-signs-details">Vital Signs Details</a>
+                    <a class="sidebar-section-subitem" href="#system-storage-details">Storage Details</a>
+                    <a class="sidebar-section-subitem" href="#system-process-details">Process Health Details</a>
+                    <a class="sidebar-section-subitem" href="#system-core-services-details">Core Services Details</a>
+                </details>
+"@
+                continue
+            }
+
             if ($Item.ShowStatus -and $ReadinessByName.ContainsKey($Item.Label)) {
                 $Card = $ReadinessByName[$Item.Label]
                 $SafeStatus = ConvertTo-HtmlSafeText $Card.Status
@@ -2292,10 +2325,105 @@ $NavigationLinksHtml
             font-weight: 600;
         }
 
-        .sidebar-link:hover,
+        .sidebar-link:hover {
+            background: rgba(15, 23, 42, 0.06);
+            border-color: rgba(15, 23, 42, 0.06);
+        }
+
         .sidebar-link:focus {
-            background: var(--chip);
-            border-color: var(--border);
+            background: rgba(15, 23, 42, 0.12);
+            border-color: rgba(15, 23, 42, 0.10);
+            outline: none;
+        }
+
+        /* v0.24 Part 2 System sidebar tree.
+           System is a native <details>/<summary> parent so the report can
+           expose subsection navigation without JavaScript.
+
+           Interaction model:
+           - The System parent row expands/collapses the subsection tree.
+           - System child links jump to anchors.
+           - Hover uses a light transparent gray.
+           - Focus/click uses a stronger gray.
+           - The arrow is intentionally larger so the collapse affordance is
+             easy to identify. */
+        .sidebar-section-group {
+            border: 0;
+            margin: 0;
+            padding: 0;
+        }
+
+        .sidebar-section-summary {
+            align-items: center;
+            border: 1px solid transparent;
+            border-radius: 10px;
+            color: #111827;
+            cursor: pointer;
+            display: flex;
+            font-size: 14px;
+            font-weight: 700;
+            gap: 10px;
+            justify-content: space-between;
+            list-style: none;
+            padding: 9px 10px;
+        }
+
+        .sidebar-section-summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .sidebar-section-summary::before {
+            content: "▸";
+            display: inline-flex;
+            flex: 0 0 14px;
+            font-size: 13px;
+            font-weight: 900;
+            line-height: 1;
+            transform: translateY(1px);
+        }
+
+        .sidebar-section-group[open] > .sidebar-section-summary::before {
+            content: "▾";
+        }
+
+        .sidebar-section-summary:hover {
+            background: rgba(15, 23, 42, 0.06);
+            border-color: rgba(15, 23, 42, 0.06);
+        }
+
+        .sidebar-section-summary:focus {
+            background: rgba(15, 23, 42, 0.12);
+            border-color: rgba(15, 23, 42, 0.10);
+            outline: none;
+        }
+
+        .sidebar-section-summary-label {
+            color: #111827;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        .sidebar-section-subitem {
+            border: 1px solid transparent;
+            border-radius: 10px;
+            color: #111827;
+            display: block;
+            font-size: 14px;
+            font-weight: 650;
+            margin-top: 4px;
+            padding: 8px 10px 8px 31px;
+            text-decoration: none;
+        }
+
+        .sidebar-section-subitem:hover {
+            background: rgba(15, 23, 42, 0.06);
+            border-color: rgba(15, 23, 42, 0.06);
+        }
+
+        .sidebar-section-subitem:focus {
+            background: rgba(15, 23, 42, 0.12);
+            border-color: rgba(15, 23, 42, 0.10);
+            outline: none;
         }
 
         /* v0.19 sidebar readiness segments.
