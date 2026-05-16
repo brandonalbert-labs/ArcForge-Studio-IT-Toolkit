@@ -1917,15 +1917,27 @@ $($ServiceCells -join "`n")
 "@
 
         $Panels = @(
-            New-ArcForgeSystemPanelHtml -Title "Endpoint Platform" -Description "Local identity and operating system evidence." -RowsHtml $EndpointRows -ExtraClass "system-panel-wide"
-            New-ArcForgeSystemPanelHtml -Title "Vital Signs" -Description "Boot and uptime indicators for quick stability review." -RowsHtml $VitalRows
+            New-ArcForgeSystemPanelHtml -Title "Endpoint Platform" -Description "Local identity and operating system evidence." -RowsHtml $EndpointRows -ExtraClass "system-panel-wide" -LinkHref "#system-endpoint-platform-details" -LinkText "Endpoint Platform Details"
+            New-ArcForgeSystemPanelHtml -Title "Vital Signs" -Description "Boot and uptime indicators for quick stability review." -RowsHtml $VitalRows -LinkHref "#system-vital-signs-details" -LinkText "Vital Signs Details"
             New-ArcForgeSystemPanelHtml -Title "Primary Drive Storage" -Description "Primary system drive capacity." -RowsHtml $StorageRows -LinkHref "#system-storage-details" -LinkText "Storage Details"
-            New-ArcForgeSystemPanelHtml -Title "Process Health" -Description "Snapshot of hung applications and the top five memory consumers." -RowsHtml $ProcessRows -ExtraClass "system-panel-wide" -LinkHref "#system-process-details" -LinkText "View Process Health Details"
-            New-ArcForgeSystemPanelHtml -Title "Core Services Matrix" -Description "Critical Windows service pipes that affect triage trust." -RowsHtml $ServiceRows -ExtraClass "system-panel-wide"
+            New-ArcForgeSystemPanelHtml -Title "Process Health" -Description "Snapshot of hung applications and the top five memory consumers." -RowsHtml $ProcessRows -ExtraClass "system-panel-wide" -LinkHref "#system-process-details" -LinkText "Process Health Details"
+            New-ArcForgeSystemPanelHtml -Title "Core Services Matrix" -Description "Critical Windows service pipes that affect triage trust." -RowsHtml $ServiceRows -ExtraClass "system-panel-wide" -LinkHref "#system-core-services-details" -LinkText "Core Services Details"
         ) -join "`n"
 
+        # v0.24 Part 3 anchor alignment.
+        # Every System child link in the Report Navigation sidebar must point to
+        # a real detail section in the static HTML body. If a sidebar link points
+        # to a missing id, browsers can handle focus/hash navigation differently,
+        # which makes the gray click/focus box feel inconsistent during testing.
+        $EndpointDetailsHtml = New-ArcForgeSystemDetailSectionHtml -Id "system-endpoint-platform-details" -Title "Endpoint Platform Details" -Description "Endpoint identity and operating system evidence captured from the current System check plus the report header context." -Lines @(
+            "[INFO] Computer Name: $ComputerValue"
+            "[INFO] Current User: $CurrentUserValue"
+            $SystemLines
+        )
+        $VitalDetailsHtml = New-ArcForgeSystemDetailSectionHtml -Id "system-vital-signs-details" -Title "Vital Signs Details" -Description "Boot and uptime evidence captured by the current ArcForge uptime check. This section reports observed availability signals only; it does not diagnose the cause of long uptime or recent restarts." -Lines $UptimeLines
         $StorageDetailsHtml = New-ArcForgeSystemDetailSectionHtml -Id "system-storage-details" -Title "Storage Details" -Description "Storage evidence captured by the current ArcForge storage check. Future multi-drive support can expand here without crowding the System snapshot." -Lines $StorageLines
         $ProcessDetailsHtml = New-ArcForgeSystemDetailSectionHtml -Id "system-process-details" -Title "Process Health Details" -Description "Process evidence captured by the current ArcForge process checks, including hung application status and the top memory consumers." -Lines $ProcessLines
+        $ServiceDetailsHtml = New-ArcForgeSystemDetailSectionHtml -Id "system-core-services-details" -Title "Core Services Details" -Description "Core Windows service evidence captured by the current ArcForge service checks. This confirms observed service state only; it does not compare against a service baseline or drift policy." -Lines $ServiceLines
 
         return @"
         <section id="system" class="card section system-evidence">
@@ -1937,8 +1949,11 @@ $($ServiceCells -join "`n")
 $Panels
             </div>
             <div class="system-detail-sections" aria-label="System detail sections">
+$EndpointDetailsHtml
+$VitalDetailsHtml
 $StorageDetailsHtml
 $ProcessDetailsHtml
+$ServiceDetailsHtml
             </div>
         </section>
 "@
@@ -2313,10 +2328,25 @@ $NavigationLinksHtml
         .sidebar-nav {
             display: grid;
             gap: 8px;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* v0.24 Part 3 sidebar selection guard.
+           The navigation sidebar is an interaction surface, not report content.
+           Disabling text selection here prevents double-clicking the System
+           summary row from highlighting the label while preserving normal text
+           selection throughout the report body. */
+        .sidebar-nav a,
+        .sidebar-section-summary,
+        .sidebar-section-summary-label {
+            user-select: none;
+            -webkit-user-select: none;
         }
 
         .sidebar-link {
             color: var(--text);
+            display: block;
             text-decoration: none;
             border: 1px solid transparent;
             border-radius: 10px;
@@ -2325,14 +2355,26 @@ $NavigationLinksHtml
             font-weight: 600;
         }
 
+        /* v0.24 Part 3 sidebar interaction polish.
+           These states intentionally stay scoped to the Report Navigation
+           sidebar so body links and report content are not affected.
+
+           Interaction model:
+           - Hover uses a light transparent gray.
+           - Focus/focus-visible/click uses a stronger gray.
+           - :active gives mouse clicks the same immediate visual feedback as
+             keyboard focus without requiring JavaScript active-route tracking. */
         .sidebar-link:hover {
             background: rgba(15, 23, 42, 0.06);
             border-color: rgba(15, 23, 42, 0.06);
         }
 
-        .sidebar-link:focus {
+        .sidebar-link:active {
             background: rgba(15, 23, 42, 0.12);
             border-color: rgba(15, 23, 42, 0.10);
+        }
+
+        .sidebar-link:focus {
             outline: none;
         }
 
@@ -2344,7 +2386,7 @@ $NavigationLinksHtml
            - The System parent row expands/collapses the subsection tree.
            - System child links jump to anchors.
            - Hover uses a light transparent gray.
-           - Focus/click uses a stronger gray.
+           - Click uses a stronger gray while the mouse button is pressed.
            - The arrow is intentionally larger so the collapse affordance is
              easy to identify. */
         .sidebar-section-group {
@@ -2357,11 +2399,11 @@ $NavigationLinksHtml
             align-items: center;
             border: 1px solid transparent;
             border-radius: 10px;
-            color: #111827;
+            color: var(--text);
             cursor: pointer;
             display: flex;
             font-size: 14px;
-            font-weight: 700;
+            font-weight: 600;
             gap: 10px;
             justify-content: space-between;
             list-style: none;
@@ -2391,14 +2433,17 @@ $NavigationLinksHtml
             border-color: rgba(15, 23, 42, 0.06);
         }
 
-        .sidebar-section-summary:focus {
+        .sidebar-section-summary:active {
             background: rgba(15, 23, 42, 0.12);
             border-color: rgba(15, 23, 42, 0.10);
+        }
+
+        .sidebar-section-summary:focus {
             outline: none;
         }
 
         .sidebar-section-summary-label {
-            color: #111827;
+            color: inherit;
             flex: 1 1 auto;
             min-width: 0;
         }
@@ -2406,10 +2451,10 @@ $NavigationLinksHtml
         .sidebar-section-subitem {
             border: 1px solid transparent;
             border-radius: 10px;
-            color: #111827;
+            color: var(--text);
             display: block;
             font-size: 14px;
-            font-weight: 650;
+            font-weight: 600;
             margin-top: 4px;
             padding: 8px 10px 8px 31px;
             text-decoration: none;
@@ -2420,11 +2465,18 @@ $NavigationLinksHtml
             border-color: rgba(15, 23, 42, 0.06);
         }
 
-        .sidebar-section-subitem:focus {
+        .sidebar-section-subitem:active {
             background: rgba(15, 23, 42, 0.12);
             border-color: rgba(15, 23, 42, 0.10);
+        }
+
+        .sidebar-section-subitem:focus {
             outline: none;
         }
+
+        /* v0.24 Part 3 note: persistent selected-section styling is intentionally
+           not used. Sidebar feedback is limited to hover and active-click states
+           so the navigation never leaves behind a gray box after interaction. */
 
         /* v0.19 sidebar readiness segments.
            Why this exists:
@@ -2437,7 +2489,9 @@ $NavigationLinksHtml
            - No JavaScript is involved.
            - Empty segments are muted placeholders.
            - Filled segments map to the existing readiness status:
-             Critical = 1 filled segment, Attention = 2, OK = 3, No Data = 0. */
+             Critical = 1 filled segment, Attention = 2, OK = 3, No Data = 0.
+           - Segment borders use a muted slate outline so empty pills stay
+             visible without the harsher black border used during testing. */
         .sidebar-link-with-status {
             display: flex;
             align-items: center;
@@ -2459,7 +2513,9 @@ $NavigationLinksHtml
         .sidebar-segment {
             width: 8px;
             height: 14px;
+            border: 1px solid rgba(100, 116, 139, 0.70);
             border-radius: 3px;
+            box-sizing: border-box;
             display: inline-block;
         }
 
