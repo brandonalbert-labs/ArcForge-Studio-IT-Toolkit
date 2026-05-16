@@ -1,5 +1,5 @@
 # ArcForge First Response
-# ArcForge First Response Report v0.23
+# ArcForge First Response Report v0.24
 
 param (
     [ValidateSet("General", "Gaming", "Creator", "Developer", "Homelab", "Secure")]
@@ -1444,6 +1444,506 @@ $GroupsHtml
 "@
     }
 
+    # Builds the v0.24 System evidence dashboard section.
+    #
+    # Why this exists:
+    # - The System section now groups existing endpoint evidence into familiar
+    #   triage blocks: platform, vital signs, storage, process health, and core
+    #   service trust.
+    # - This is presentation-only. It reuses findings that were already written
+    #   to the report and does not run additional system checks.
+    # - Keeping this in its own helper makes the v0.24 change easier to audit or
+    #   adjust without touching the console/TXT reporting path.
+    function New-ArcForgeSystemEvidenceHtml {
+        param (
+            [string]$ComputerName,
+            [string]$CurrentUser,
+            [object[]]$SystemLines,
+            [object[]]$UptimeLines,
+            [object[]]$StorageLines,
+            [object[]]$ProcessLines,
+            [object[]]$ServiceLines
+        )
+
+        # Converts one raw finding line like:
+        # [OK] OS Name: Microsoft Windows 10...
+        # into a small object the HTML renderer can place in a key/value row.
+        function ConvertTo-ArcForgeSystemEvidenceRecord {
+            param (
+                [string]$Line
+            )
+
+            if ([string]::IsNullOrWhiteSpace($Line)) {
+                return $null
+            }
+
+            $Pattern = '^\[(OK|WARN|FAIL)\]\s+(.+?:)\s*(.*)$'
+            if ($Line -notmatch $Pattern) {
+                return $null
+            }
+
+            return [pscustomobject]@{
+                Status = $Matches[1]
+                Label  = $Matches[2].Trim()
+                Value  = $Matches[3].Trim()
+            }
+        }
+
+        # Looks up the first finding with a matching label in an existing section.
+        # Missing rows are rendered as muted placeholders so the HTML remains
+        # stable even if a check fails before writing every expected line.
+        function Get-ArcForgeSystemEvidenceRecord {
+            param (
+                [object[]]$Lines,
+                [string]$Label,
+                [string]$FallbackValue = "Not captured in this report."
+            )
+
+            $FlattenedLines = Get-ArcForgeFlattenedLines -Lines $Lines
+
+            foreach ($Line in $FlattenedLines) {
+                $Record = ConvertTo-ArcForgeSystemEvidenceRecord -Line $Line
+                if ($null -ne $Record -and $Record.Label -eq $Label) {
+                    return $Record
+                }
+            }
+
+            return [pscustomobject]@{
+                Status = "UNKNOWN"
+                Label  = $Label
+                Value  = $FallbackValue
+            }
+        }
+
+        # Renders a single compact status-first key/value row.
+        # The status class only affects the HTML report and does not change
+        # readiness scoring or report data.
+        function New-ArcForgeSystemEvidenceRowHtml {
+            param (
+                [object]$Record,
+                [string]$DisplayLabel
+            )
+
+            $Status = if ($Record.Status) { [string]$Record.Status } else { "UNKNOWN" }
+            $StatusClass = switch ($Status) {
+                "OK"      { "system-status-ok" }
+                "WARN"    { "system-status-warn" }
+                "FAIL"    { "system-status-fail" }
+                default   { "system-status-unknown" }
+            }
+
+            $Label = if ([string]::IsNullOrWhiteSpace($DisplayLabel)) { $Record.Label } else { $DisplayLabel }
+            $SafeStatus = ConvertTo-HtmlSafeText $Status
+            $SafeLabel = ConvertTo-HtmlSafeText (($Label -replace ':$', '').Trim())
+            $SafeValue = ConvertTo-HtmlSafeText $Record.Value
+
+            return @"
+                    <div class="system-evidence-row">
+                        <span class="system-status-pill $StatusClass">$SafeStatus</span>
+                        <span class="system-evidence-label">$SafeLabel</span>
+                        <span class="system-evidence-value">$SafeValue</span>
+                    </div>
+"@
+        }
+
+        # Renders identity/platform evidence without a health-style OK pill.
+        # Endpoint identity fields are evidence capture values, not pass/fail
+        # health checks, so this quieter row avoids implying a status verdict.
+        function New-ArcForgeSystemEvidenceOnlyRowHtml {
+            param (
+                [object]$Record,
+                [string]$DisplayLabel
+            )
+
+            $Label = if ([string]::IsNullOrWhiteSpace($DisplayLabel)) { $Record.Label } else { $DisplayLabel }
+            $Value = if ($Record -and -not [string]::IsNullOrWhiteSpace([string]$Record.Value)) {
+                [string]$Record.Value
+            }
+            else {
+                "Evidence not captured."
+            }
+
+            if ($Value -eq "Not captured in this report.") {
+                $Value = "Evidence not captured."
+            }
+
+            $ValueClass = if ($Value -eq "Evidence not captured.") {
+                "system-evidence-value system-evidence-value-missing"
+            }
+            else {
+                "system-evidence-value"
+            }
+
+            $SafeLabel = ConvertTo-HtmlSafeText (($Label -replace ':$', '').Trim())
+            $SafeValue = ConvertTo-HtmlSafeText $Value
+
+            return @"
+                    <div class="system-evidence-row system-evidence-row-informational">
+                        <span class="system-evidence-label">$SafeLabel</span>
+                        <span class="$ValueClass">$SafeValue</span>
+                    </div>
+"@
+        }
+
+        # Builds a System snapshot panel. Optional anchor-style footer links let
+        # the snapshot stay compact while still giving technicians a clear path
+        # to deeper static evidence sections later in the same HTML report.
+        function New-ArcForgeSystemPanelHtml {
+            param (
+                [string]$Title,
+                [string]$Description,
+                [string]$RowsHtml,
+                [string]$ExtraClass = "",
+                [string]$LinkHref = "",
+                [string]$LinkText = ""
+            )
+
+            $SafeTitle = ConvertTo-HtmlSafeText $Title
+            $SafeDescription = ConvertTo-HtmlSafeText $Description
+            $PanelClass = "system-evidence-panel"
+
+            if (-not [string]::IsNullOrWhiteSpace($ExtraClass)) {
+                $PanelClass = "$PanelClass $ExtraClass"
+            }
+
+            $LinkHtml = ""
+            if (-not [string]::IsNullOrWhiteSpace($LinkHref) -and -not [string]::IsNullOrWhiteSpace($LinkText)) {
+                $SafeLinkHref = ConvertTo-HtmlSafeText $LinkHref
+                $SafeLinkText = ConvertTo-HtmlSafeText $LinkText
+                $LinkHtml = @"
+                    <div class="system-panel-footer">
+                        <a class="system-panel-link" href="$SafeLinkHref"><span class="system-panel-link-text">$SafeLinkText</span></a>
+                    </div>
+"@
+            }
+
+            return @"
+                <article class="$PanelClass">
+                    <div class="system-panel-header">
+                        <h3>$SafeTitle</h3>
+                        <p>$SafeDescription</p>
+                    </div>
+                    <div class="system-evidence-rows">
+$RowsHtml
+                    </div>
+$LinkHtml
+                </article>
+"@
+        }
+
+        # Builds a detail anchor section from existing report lines only.
+        # These sections are intentionally simple and static: the snapshot cards
+        # link here when a tech wants more evidence without requiring JavaScript.
+        function New-ArcForgeSystemDetailSectionHtml {
+            param (
+                [string]$Id,
+                [string]$Title,
+                [string]$Description,
+                [object[]]$Lines
+            )
+
+            $SafeId = ConvertTo-HtmlSafeText $Id
+            $SafeTitle = ConvertTo-HtmlSafeText $Title
+            $SafeDescription = ConvertTo-HtmlSafeText $Description
+            $DetailRows = @()
+
+            foreach ($Line in (Get-ArcForgeFlattenedLines -Lines $Lines)) {
+                $Record = ConvertTo-ArcForgeSystemEvidenceRecord -Line $Line
+                if ($null -ne $Record) {
+                    $DetailRows += New-ArcForgeSystemEvidenceRowHtml -Record $Record
+                }
+            }
+
+            if (-not $DetailRows -or $DetailRows.Count -eq 0) {
+                $DetailRows += @"
+                    <div class="system-detail-empty muted">No detail lines captured for this subsection.</div>
+"@
+            }
+
+            $DetailRowsHtml = $DetailRows -join "`n"
+
+            return @"
+                <article id="$SafeId" class="system-detail-card">
+                    <div class="system-panel-header">
+                        <h3>$SafeTitle</h3>
+                        <p>$SafeDescription</p>
+                    </div>
+                    <div class="system-evidence-rows">
+$DetailRowsHtml
+                    </div>
+                </article>
+"@
+        }
+
+        $ComputerValue = if ([string]::IsNullOrWhiteSpace($ComputerName)) { "Evidence not captured." } else { $ComputerName }
+        $CurrentUserValue = if ([string]::IsNullOrWhiteSpace($CurrentUser)) { "Evidence not captured." } else { $CurrentUser }
+        $ComputerRecord = [pscustomobject]@{ Status = "INFO"; Label = "Computer Name:"; Value = $ComputerValue }
+        $UserRecord = [pscustomobject]@{ Status = "INFO"; Label = "Current User:"; Value = $CurrentUserValue }
+        $OsNameRecord = Get-ArcForgeSystemEvidenceRecord -Lines $SystemLines -Label "OS Name:" -FallbackValue "Evidence not captured."
+        $OsVersionRecord = Get-ArcForgeSystemEvidenceRecord -Lines $SystemLines -Label "OS Version:" -FallbackValue "Evidence not captured."
+        $ArchitectureRecord = Get-ArcForgeSystemEvidenceRecord -Lines $SystemLines -Label "Architecture:" -FallbackValue "Evidence not captured."
+
+        $EndpointRows = @(
+            New-ArcForgeSystemEvidenceOnlyRowHtml -Record $ComputerRecord -DisplayLabel "Computer Name"
+            New-ArcForgeSystemEvidenceOnlyRowHtml -Record $UserRecord -DisplayLabel "Current User"
+            New-ArcForgeSystemEvidenceOnlyRowHtml -Record $OsNameRecord -DisplayLabel "OS Name"
+            New-ArcForgeSystemEvidenceOnlyRowHtml -Record $OsVersionRecord -DisplayLabel "OS Version"
+            New-ArcForgeSystemEvidenceOnlyRowHtml -Record $ArchitectureRecord -DisplayLabel "Architecture"
+        ) -join "`n"
+
+        $LastBootRecord = Get-ArcForgeSystemEvidenceRecord -Lines $UptimeLines -Label "Last Boot:"
+        $UptimeDaysRecord = Get-ArcForgeSystemEvidenceRecord -Lines $UptimeLines -Label "Uptime Days:"
+
+        $VitalRows = @(
+            New-ArcForgeSystemEvidenceRowHtml -Record $LastBootRecord -DisplayLabel "Last Boot"
+            New-ArcForgeSystemEvidenceRowHtml -Record $UptimeDaysRecord -DisplayLabel "Uptime Days"
+        ) -join "`n"
+
+        $DriveRecord = Get-ArcForgeSystemEvidenceRecord -Lines $StorageLines -Label "Drive:"
+        $TotalSizeRecord = Get-ArcForgeSystemEvidenceRecord -Lines $StorageLines -Label "Total Size:"
+        $FreeSpaceRecord = Get-ArcForgeSystemEvidenceRecord -Lines $StorageLines -Label "Free Space:"
+        $FreePercent = $null
+        $UsedPercent = $null
+        $TotalSizeGb = $null
+        $FreeSpaceGb = $null
+        $UsedSpaceGb = $null
+
+        if ($FreeSpaceRecord.Value -match '\((?<Percent>[0-9]+(\.[0-9]+)?)%\)') {
+            $FreePercent = [double]$Matches.Percent
+            $UsedPercent = [math]::Max(0, [math]::Min(100, (100 - $FreePercent)))
+        }
+
+        if ($TotalSizeRecord.Value -match '(?<Total>[0-9]+(\.[0-9]+)?)\s*GB') {
+            $TotalSizeGb = [double]$Matches.Total
+        }
+
+        if ($FreeSpaceRecord.Value -match '(?<Free>[0-9]+(\.[0-9]+)?)\s*GB\s*free') {
+            $FreeSpaceGb = [double]$Matches.Free
+        }
+
+        if ($null -ne $TotalSizeGb -and $null -ne $FreeSpaceGb) {
+            $UsedSpaceGb = [math]::Max(0, ($TotalSizeGb - $FreeSpaceGb))
+        }
+
+        $SafeDriveValue = ConvertTo-HtmlSafeText $DriveRecord.Value
+
+        # The summary card label already says "Free Space", so the display
+        # value removes the redundant word "free" while preserving the amount
+        # and percentage captured by the existing storage check.
+        $FreeSpaceDisplayValue = ($FreeSpaceRecord.Value -replace '\s+free\s*\(', ' (')
+        $SafeFreeSpaceValue = ConvertTo-HtmlSafeText $FreeSpaceDisplayValue
+        $UsedSummaryText = "Used space not calculated."
+
+        if ($null -ne $UsedSpaceGb -and $null -ne $TotalSizeGb) {
+            $UsedSpaceText = $UsedSpaceGb.ToString("0.0", [System.Globalization.CultureInfo]::InvariantCulture)
+            $TotalSizeText = $TotalSizeGb.ToString("0.0", [System.Globalization.CultureInfo]::InvariantCulture)
+            $UsedSummaryText = "Used $UsedSpaceText GB / $TotalSizeText GB"
+        }
+
+        $SafeUsedSummaryText = ConvertTo-HtmlSafeText $UsedSummaryText
+        $StorageMeterClass = switch ($FreeSpaceRecord.Status) {
+            "OK"      { "system-meter-ok" }
+            "WARN"    { "system-meter-warn" }
+            "FAIL"    { "system-meter-fail" }
+            default   { "system-meter-unknown" }
+        }
+
+        $StorageMeterHtml = @"
+                    <div class="system-storage-meter-block">
+                        <div class="system-storage-meter-empty" aria-label="Primary drive used space unavailable"></div>
+                    </div>
+"@
+
+        $StoragePercentHtml = @"
+                    <div class="system-storage-percent-row muted">Used and free percentages were not captured.</div>
+"@
+
+        if ($null -ne $FreePercent -and $null -ne $UsedPercent) {
+            $FreePercentText = $FreePercent.ToString("0.0", [System.Globalization.CultureInfo]::InvariantCulture)
+            $UsedPercentText = $UsedPercent.ToString("0.0", [System.Globalization.CultureInfo]::InvariantCulture)
+            $SafeFreePercent = ConvertTo-HtmlSafeText $FreePercentText
+            $SafeUsedPercent = ConvertTo-HtmlSafeText $UsedPercentText
+
+            # The inline width is generated at report time and stays static in
+            # the saved HTML file. The fill represents consumed space so the card
+            # follows the familiar Windows/RMM storage meter pattern.
+            $StorageMeterHtml = @"
+                    <div class="system-storage-meter-block">
+                        <div class="system-storage-meter" aria-label="Primary drive used space $SafeUsedPercent percent">
+                            <div class="system-storage-meter-fill $StorageMeterClass" style="width: $SafeUsedPercent%;"></div>
+                        </div>
+                    </div>
+"@
+
+            $StoragePercentHtml = @"
+                    <div class="system-storage-legend-row">
+                        <span class="system-storage-legend-item"><span class="system-storage-legend-marker system-storage-legend-used $StorageMeterClass"></span>$SafeUsedPercent% Used</span>
+                        <span class="system-storage-legend-item"><span class="system-storage-legend-marker system-storage-legend-free"></span>$SafeFreePercent% Free</span>
+                    </div>
+"@
+        }
+
+        $StorageRows = @"
+                    <div class="system-storage-widget">
+                        <div class="system-storage-drive-row">
+                            <div class="system-storage-drive-name">$SafeDriveValue</div>
+                            <div class="system-storage-used-summary">$SafeUsedSummaryText</div>
+                        </div>
+$StorageMeterHtml
+$StoragePercentHtml
+                        <div class="system-storage-free-row">Free Space: $SafeFreeSpaceValue</div>
+                    </div>
+"@
+
+        $HungAppsRecord = Get-ArcForgeSystemEvidenceRecord -Lines $ProcessLines -Label "Hung Apps:"
+        $HungAppItems = @()
+
+        if ($HungAppsRecord.Status -ne "OK" -and $HungAppsRecord.Value -match ':\s*(?<Names>.+)$') {
+            $HungAppItems = @(
+                foreach ($Name in ($Matches.Names -split ',' | Select-Object -First 5)) {
+                    $CleanName = $Name.Trim()
+                    if (-not [string]::IsNullOrWhiteSpace($CleanName)) {
+                        $CleanName
+                    }
+                }
+            )
+        }
+
+        $HungAppsSnapshotHtml = ""
+        if ($HungAppItems.Count -gt 0) {
+            $HungAppsListItems = @(
+                foreach ($Name in $HungAppItems) {
+                    $SafeName = ConvertTo-HtmlSafeText $Name
+                    "<li>$SafeName</li>"
+                }
+            ) -join "`n"
+
+            $HungAppsSummaryHtml = New-ArcForgeSystemEvidenceRowHtml -Record $HungAppsRecord -DisplayLabel "Hung Apps"
+            $HungAppsSnapshotHtml = @"
+$HungAppsSummaryHtml
+                            <ul class="system-compact-list">
+$HungAppsListItems
+                            </ul>
+"@
+        }
+        else {
+            $HungAppsSnapshotHtml = New-ArcForgeSystemEvidenceRowHtml -Record $HungAppsRecord -DisplayLabel "Hung Apps"
+        }
+
+        $TopMemoryRecords = @(
+            foreach ($Line in (Get-ArcForgeFlattenedLines -Lines $ProcessLines)) {
+                $Record = ConvertTo-ArcForgeSystemEvidenceRecord -Line $Line
+                if ($null -ne $Record -and $Record.Label -eq "Top Memory:") {
+                    $Record
+                }
+            }
+        ) | Select-Object -First 5
+
+        $TopMemoryRows = @()
+        $Index = 1
+        foreach ($Record in $TopMemoryRecords) {
+            $SafeIndex = ConvertTo-HtmlSafeText ([string]$Index)
+            $SafeValue = ConvertTo-HtmlSafeText $Record.Value
+            $TopMemoryRows += @"
+                                    <tr>
+                                        <td>$SafeIndex</td>
+                                        <td>$SafeValue</td>
+                                    </tr>
+"@
+            $Index++
+        }
+
+        if (-not $TopMemoryRows -or $TopMemoryRows.Count -eq 0) {
+            $TopMemoryRows += @"
+                                    <tr>
+                                        <td colspan="2" class="muted">No top memory consumers captured.</td>
+                                    </tr>
+"@
+        }
+
+        $TopMemoryRowsHtml = $TopMemoryRows -join "`n"
+        $ProcessRows = @"
+                    <div class="system-process-snapshot-grid">
+                        <div class="system-process-snapshot-card">
+                            <div class="system-mini-table-title">Hung Applications</div>
+$HungAppsSnapshotHtml
+                        </div>
+                        <div class="system-process-snapshot-card">
+                            <div class="system-mini-table-title">Top 5 Memory Consumers</div>
+                            <table class="system-mini-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Process</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+$TopMemoryRowsHtml
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+"@
+
+        $ServiceLabels = @("Event Log:", "WMI:", "Workstation:", "DNS Client:")
+        $ServiceCells = @()
+
+        foreach ($Label in $ServiceLabels) {
+            $Record = Get-ArcForgeSystemEvidenceRecord -Lines $ServiceLines -Label $Label
+            $Status = if ($Record.Status) { [string]$Record.Status } else { "UNKNOWN" }
+            $StatusClass = switch ($Status) {
+                "OK"      { "system-service-ok" }
+                "WARN"    { "system-service-warn" }
+                "FAIL"    { "system-service-fail" }
+                default   { "system-service-unknown" }
+            }
+            $SafeStatus = ConvertTo-HtmlSafeText $Status
+            $SafeLabel = ConvertTo-HtmlSafeText (($Record.Label -replace ':$', '').Trim())
+            $SafeValue = ConvertTo-HtmlSafeText $Record.Value
+
+            $ServiceCells += @"
+                        <div class="system-service-cell $StatusClass">
+                            <span class="system-service-name">$SafeLabel</span>
+                            <span class="system-service-status">$SafeStatus</span>
+                            <span class="system-service-detail">$SafeValue</span>
+                        </div>
+"@
+        }
+
+        $ServiceRows = @"
+                    <div class="system-service-matrix">
+$($ServiceCells -join "`n")
+                    </div>
+"@
+
+        $Panels = @(
+            New-ArcForgeSystemPanelHtml -Title "Endpoint Platform" -Description "Local identity and operating system evidence." -RowsHtml $EndpointRows -ExtraClass "system-panel-wide"
+            New-ArcForgeSystemPanelHtml -Title "Vital Signs" -Description "Boot and uptime indicators for quick stability review." -RowsHtml $VitalRows
+            New-ArcForgeSystemPanelHtml -Title "Primary Drive Storage" -Description "Primary system drive capacity." -RowsHtml $StorageRows -LinkHref "#system-storage-details" -LinkText "Storage Details"
+            New-ArcForgeSystemPanelHtml -Title "Process Health" -Description "Snapshot of hung applications and the top five memory consumers." -RowsHtml $ProcessRows -ExtraClass "system-panel-wide" -LinkHref "#system-process-details" -LinkText "View Process Health Details"
+            New-ArcForgeSystemPanelHtml -Title "Core Services Matrix" -Description "Critical Windows service pipes that affect triage trust." -RowsHtml $ServiceRows -ExtraClass "system-panel-wide"
+        ) -join "`n"
+
+        $StorageDetailsHtml = New-ArcForgeSystemDetailSectionHtml -Id "system-storage-details" -Title "Storage Details" -Description "Storage evidence captured by the current ArcForge storage check. Future multi-drive support can expand here without crowding the System snapshot." -Lines $StorageLines
+        $ProcessDetailsHtml = New-ArcForgeSystemDetailSectionHtml -Id "system-process-details" -Title "Process Health Details" -Description "Process evidence captured by the current ArcForge process checks, including hung application status and the top memory consumers." -Lines $ProcessLines
+
+        return @"
+        <section id="system" class="card section system-evidence">
+            <div class="section-title">
+                <h2>System</h2>
+                <p>Endpoint evidence grouped for fast offline triage. The snapshot surfaces what matters first, while detail anchors expose the supporting evidence without JavaScript.</p>
+            </div>
+            <div class="system-evidence-grid">
+$Panels
+            </div>
+            <div class="system-detail-sections" aria-label="System detail sections">
+$StorageDetailsHtml
+$ProcessDetailsHtml
+            </div>
+        </section>
+"@
+    }
+
     # Builds the three compact status segments shown beside readiness-domain
     # links in the HTML report sidebar.
     #
@@ -1613,7 +2113,15 @@ $NavigationLinksHtml
     $SecurityLines = $ReportSections["SECURITY"]
     $UpdatesLines = $ReportSections["UPDATES"]
 
-    $SystemFindingsHtml = ConvertTo-ArcForgeHtmlFindingList -Lines $SystemLines
+    $SystemEvidenceHtml = New-ArcForgeSystemEvidenceHtml `
+        -ComputerName $ComputerName `
+        -CurrentUser $CurrentUser `
+        -SystemLines $ReportSections["SYSTEM"] `
+        -UptimeLines $ReportSections["UPTIME"] `
+        -StorageLines $ReportSections["STORAGE"] `
+        -ProcessLines $ReportSections["PROCESSES"] `
+        -ServiceLines $ReportSections["SERVICES"]
+
     $NetworkFindingsHtml = ConvertTo-ArcForgeHtmlFindingList -Lines $NetworkLines
     $SoftwareFindingsHtml = ConvertTo-ArcForgeHtmlFindingList -Lines $SoftwareLines
     $SecurityFindingsHtml = ConvertTo-ArcForgeHtmlFindingList -Lines $SecurityLines
@@ -2571,6 +3079,414 @@ $NavigationLinksHtml
         - Treat <summary> like the clickable button.
         - Treat summary::after like the chevron icon.
         */
+        /* v0.24 System evidence dashboard.
+           Why this exists:
+           - The System section now mirrors common triage/reporting patterns by
+             grouping endpoint identity, vital signs, storage, process health,
+             and core service trust into separate static evidence panels.
+           - These styles are scoped to system-* classes so this release does not
+             redesign Network, Software Readiness, Security, Updates, Raw
+             Findings, or other previously shipped report modules.
+
+           Important:
+           - HTML/CSS only. No JavaScript.
+           - Presentation-only. No new checks, scoring changes, console changes,
+             or TXT report changes. */
+        .system-evidence-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .system-evidence-panel,
+        .system-detail-card {
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: #fbfdff;
+            padding: 14px;
+            min-width: 0;
+        }
+
+        .system-panel-wide {
+            grid-column: 1 / -1;
+        }
+
+        .system-panel-header {
+            margin-bottom: 12px;
+        }
+
+        .system-panel-header h3 {
+            margin: 0 0 4px 0;
+            font-size: 15px;
+        }
+
+        .system-panel-header p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .system-evidence-rows {
+            display: grid;
+            gap: 8px;
+        }
+
+        .system-evidence-row {
+            display: grid;
+            grid-template-columns: auto minmax(120px, 0.6fr) minmax(0, 1.4fr);
+            gap: 10px;
+            align-items: center;
+            border-top: 1px solid rgba(148, 163, 184, 0.22);
+            padding-top: 8px;
+            min-width: 0;
+        }
+
+        .system-evidence-row:first-child {
+            border-top: 0;
+            padding-top: 0;
+        }
+
+        .system-evidence-row-informational {
+            grid-template-columns: minmax(160px, 0.55fr) minmax(0, 1.45fr);
+        }
+
+        .system-status-pill {
+            border-radius: 999px;
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            min-width: 58px;
+            padding: 4px 8px;
+            text-align: center;
+        }
+
+        .system-status-ok {
+            background: rgba(31, 143, 77, 0.11);
+            border: 1px solid rgba(31, 143, 77, 0.28);
+            color: var(--ok);
+        }
+
+        .system-status-warn {
+            background: rgba(183, 121, 31, 0.11);
+            border: 1px solid rgba(183, 121, 31, 0.28);
+            color: var(--warn);
+        }
+
+        .system-status-fail {
+            background: rgba(197, 48, 48, 0.11);
+            border: 1px solid rgba(197, 48, 48, 0.28);
+            color: var(--fail);
+        }
+
+        .system-status-unknown {
+            background: var(--chip);
+            border: 1px solid var(--border);
+            color: var(--muted);
+        }
+
+        .system-evidence-label {
+            color: var(--muted);
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .system-evidence-value {
+            font-size: 13px;
+            font-weight: 650;
+            min-width: 0;
+            overflow-wrap: anywhere;
+        }
+
+        .system-evidence-value-missing {
+            color: var(--muted);
+            font-style: italic;
+            font-weight: 650;
+        }
+
+        .system-storage-widget {
+            display: grid;
+            gap: 10px;
+        }
+
+        .system-storage-drive-row {
+            align-items: baseline;
+            display: flex;
+            gap: 12px;
+            justify-content: space-between;
+        }
+
+        .system-storage-drive-name {
+            color: #0f172a;
+            font-size: 13px;
+            font-weight: 850;
+        }
+
+        .system-storage-used-summary {
+            color: #0f172a;
+            font-size: 12px;
+            font-weight: 750;
+            text-align: right;
+        }
+
+        .system-storage-meter-block {
+            display: grid;
+            gap: 6px;
+        }
+
+        .system-storage-meter,
+        .system-storage-meter-empty {
+            background: #dbe2ea;
+            border-radius: 999px;
+            height: 12px;
+            overflow: hidden;
+            width: 100%;
+        }
+
+        .system-storage-meter-fill {
+            border-radius: 999px 0 0 999px;
+            height: 100%;
+        }
+
+        .system-storage-percent-row,
+        .system-storage-free-row {
+            color: #475569;
+            font-size: 12px;
+            font-weight: 750;
+        }
+
+        .system-storage-legend-row {
+            align-items: center;
+            color: #475569;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .system-storage-legend-item {
+            align-items: center;
+            display: inline-flex;
+            gap: 6px;
+            white-space: nowrap;
+        }
+
+        .system-storage-legend-marker {
+            border-radius: 2px;
+            display: inline-block;
+            height: 8px;
+            width: 8px;
+        }
+
+        .system-storage-legend-free {
+            background: #dbe2ea;
+        }
+
+        .system-meter-ok {
+            background: var(--ok);
+        }
+
+        .system-meter-warn {
+            background: var(--warn);
+        }
+
+        .system-meter-fail {
+            background: var(--fail);
+        }
+
+        .system-meter-unknown {
+            background: var(--muted);
+        }
+
+        .system-panel-footer {
+            border-top: 1px solid rgba(148, 163, 184, 0.22);
+            margin-top: 12px;
+            padding-top: 0;
+        }
+
+        .system-panel-link {
+            align-items: center;
+            color: #0f172a;
+            display: flex;
+            font-size: 13px;
+            font-weight: 800;
+            justify-content: space-between;
+            line-height: 1;
+            min-height: 48px;
+            text-decoration: none;
+        }
+
+        .system-panel-link-text {
+            align-items: center;
+            display: inline-flex;
+            line-height: 1;
+            transform: translateY(3px);
+        }
+
+        .system-panel-link::after {
+            align-items: center;
+            color: #0f172a;
+            content: "›";
+            display: inline-flex;
+            font-size: 30px;
+            font-weight: 500;
+            height: 24px;
+            justify-content: center;
+            line-height: 1;
+            margin-left: 16px;
+            transform: translateY(-1px);
+            width: 24px;
+        }
+
+        .system-panel-link:hover {
+            text-decoration: none;
+        }
+
+        .system-process-snapshot-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .system-process-snapshot-card {
+            border: 1px solid rgba(148, 163, 184, 0.26);
+            border-radius: 12px;
+            padding: 12px;
+            min-width: 0;
+        }
+
+        .system-compact-list {
+            margin: 8px 0 0 0;
+            padding-left: 20px;
+            color: #0f172a;
+            font-size: 13px;
+            font-weight: 650;
+        }
+
+        .system-compact-list li + li {
+            margin-top: 4px;
+        }
+
+        .system-mini-table-title {
+            color: var(--muted);
+            font-size: 13px;
+            font-weight: 800;
+            margin-bottom: 8px;
+        }
+
+        .system-mini-table {
+            border-collapse: collapse;
+            font-size: 13px;
+            width: 100%;
+        }
+
+        .system-mini-table th,
+        .system-mini-table td {
+            border-top: 1px solid rgba(148, 163, 184, 0.22);
+            padding: 7px 6px;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .system-mini-table th {
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .system-mini-table td:first-child,
+        .system-mini-table th:first-child {
+            width: 42px;
+        }
+
+        .system-service-matrix {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 10px;
+        }
+
+        .system-service-cell {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            display: grid;
+            gap: 5px;
+            padding: 10px;
+            min-width: 0;
+        }
+
+        .system-service-name {
+            font-size: 13px;
+            font-weight: 800;
+        }
+
+        .system-service-status {
+            border-radius: 999px;
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 800;
+            justify-self: start;
+            letter-spacing: 0.04em;
+            padding: 4px 8px;
+        }
+
+        .system-service-detail {
+            color: var(--muted);
+            font-size: 12px;
+            overflow-wrap: anywhere;
+        }
+
+        .system-service-ok {
+            background: rgba(31, 143, 77, 0.06);
+            border-color: rgba(31, 143, 77, 0.24);
+        }
+
+        .system-service-ok .system-service-status {
+            background: rgba(31, 143, 77, 0.12);
+            color: var(--ok);
+        }
+
+        .system-service-warn {
+            background: rgba(183, 121, 31, 0.06);
+            border-color: rgba(183, 121, 31, 0.24);
+        }
+
+        .system-service-warn .system-service-status {
+            background: rgba(183, 121, 31, 0.12);
+            color: var(--warn);
+        }
+
+        .system-service-fail {
+            background: rgba(197, 48, 48, 0.06);
+            border-color: rgba(197, 48, 48, 0.24);
+        }
+
+        .system-service-fail .system-service-status {
+            background: rgba(197, 48, 48, 0.12);
+            color: var(--fail);
+        }
+
+        .system-service-unknown .system-service-status {
+            background: var(--chip);
+            color: var(--muted);
+        }
+
+        .system-detail-sections {
+            display: grid;
+            gap: 14px;
+            margin-top: 14px;
+        }
+
+        .system-detail-card {
+            scroll-margin-top: 24px;
+        }
+
+        .system-detail-empty {
+            font-size: 13px;
+            font-weight: 650;
+        }
+
         .technical-depth {
             margin: 0;
         }
@@ -2648,6 +3564,11 @@ $NavigationLinksHtml
             .grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
+
+            .system-service-matrix,
+            .system-process-snapshot-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
         }
 
         @media (max-width: 600px) {
@@ -2656,8 +3577,16 @@ $NavigationLinksHtml
             }
 
             .grid,
-            .endpoint-count-strip {
+            .endpoint-count-strip,
+            .system-evidence-grid,
+            .system-service-matrix,
+            .system-process-snapshot-grid {
                 grid-template-columns: 1fr;
+            }
+
+            .system-evidence-row {
+                grid-template-columns: 1fr;
+                gap: 4px;
             }
         }
     </style>
@@ -2721,12 +3650,7 @@ $EndpointSummaryHtml
 
 $ReadinessOverviewHtml
 
-        <section id="system" class="card section">
-            <h2>System</h2>
-            <ul>
-                $SystemFindingsHtml
-            </ul>
-        </section>
+$SystemEvidenceHtml
 
         <section id="network" class="card section">
             <h2>Network</h2>
