@@ -3376,7 +3376,7 @@ $NavigationLinksHtml
             justify-content: space-between;
             list-style: none;
             min-height: 58px;
-            padding: 0 1cm;
+            padding: 0 14px;
             user-select: none;
         }
 
