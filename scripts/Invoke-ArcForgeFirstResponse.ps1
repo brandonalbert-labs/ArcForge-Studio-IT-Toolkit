@@ -1,4 +1,4 @@
-# ArcForge First Response
+﻿# ArcForge First Response
 # ArcForge First Response Report v0.24
 
 param (
@@ -1546,10 +1546,11 @@ $GroupsHtml
 "@
         }
 
-        # Renders a compact status + label row for snapshot cards that should
-        # stay scannable at narrow widths. Detailed values remain in the matching
-        # collapsible detail section, so the overview card does not cram long
-        # timestamps or evidence strings into a small responsive card.
+        # Renders a compact status + label row for snapshot cards.
+        # Use this when the overview should communicate the signal without
+        # cramming long evidence values into a narrow responsive card.
+        # The full evidence value should remain available in the matching
+        # details section.
         function New-ArcForgeSystemStatusLabelRowHtml {
             param (
                 [object]$Record,
@@ -1569,7 +1570,7 @@ $GroupsHtml
             $SafeLabel = ConvertTo-HtmlSafeText (($Label -replace ':$', '').Trim())
 
             return @"
-                    <div class="system-evidence-row system-evidence-row-status-label">
+                    <div class="system-status-label-row">
                         <span class="system-status-pill $StatusClass">$SafeStatus</span>
                         <span class="system-evidence-label">$SafeLabel</span>
                     </div>
@@ -1887,16 +1888,14 @@ $StoragePercentHtml
                 }
             ) -join "`n"
 
-            $HungAppsSummaryHtml = New-ArcForgeSystemEvidenceRowHtml -Record $HungAppsRecord -DisplayLabel "Hung Apps"
             $HungAppsSnapshotHtml = @"
-$HungAppsSummaryHtml
-                            <ul class="system-compact-list">
+                            <ul class="system-compact-list system-compact-list-separated">
 $HungAppsListItems
                             </ul>
 "@
         }
         else {
-            $HungAppsSnapshotHtml = New-ArcForgeSystemEvidenceRowHtml -Record $HungAppsRecord -DisplayLabel "Hung Apps"
+            $HungAppsSnapshotHtml = New-ArcForgeSystemStatusLabelRowHtml -Record $HungAppsRecord -DisplayLabel "Hung Apps"
         }
 
         $TopMemoryRecords = @(
@@ -1987,7 +1986,7 @@ $($ServiceCells -join "`n")
 
         $Panels = @(
             New-ArcForgeSystemPanelHtml -Title "Endpoint Platform" -Description "Local identity and operating system evidence." -RowsHtml $EndpointRows -ExtraClass "system-panel-wide" -LinkHref "#system-endpoint-platform-details" -LinkText "Endpoint Platform Details"
-            New-ArcForgeSystemPanelHtml -Title "Vital Signs" -Description "Boot and uptime signals for quick stability review." -RowsHtml $VitalRows -LinkHref "#system-vital-signs-details" -LinkText "Vital Signs Details"
+            New-ArcForgeSystemPanelHtml -Title "Vital Signs" -Description "Boot and uptime indicators for quick stability review." -RowsHtml $VitalRows -LinkHref "#system-vital-signs-details" -LinkText "Vital Signs Details"
             New-ArcForgeSystemPanelHtml -Title "Primary Drive Storage" -Description "Primary system drive capacity." -RowsHtml $StorageRows -LinkHref "#system-storage-details" -LinkText "Storage Details"
             New-ArcForgeSystemPanelHtml -Title "Process Health" -Description "Snapshot of hung applications and the top five memory consumers." -RowsHtml $ProcessRows -ExtraClass "system-panel-wide" -LinkHref "#system-process-details" -LinkText "Process Health Details"
             New-ArcForgeSystemPanelHtml -Title "Core Services Matrix" -Description "Critical Windows service pipes that affect triage trust." -RowsHtml $ServiceRows -ExtraClass "system-panel-wide" -LinkHref "#system-core-services-details" -LinkText "Core Services Details"
@@ -3488,6 +3487,21 @@ $NavigationLinksHtml
             min-width: 0;
         }
 
+        .system-status-label-row {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr);
+            gap: 10px;
+            align-items: center;
+            border-top: 1px solid rgba(148, 163, 184, 0.22);
+            padding-top: 8px;
+            min-width: 0;
+        }
+
+        .system-status-label-row:first-child {
+            border-top: 0;
+            padding-top: 0;
+        }
+
         .system-evidence-row:first-child {
             border-top: 0;
             padding-top: 0;
@@ -3495,10 +3509,6 @@ $NavigationLinksHtml
 
         .system-evidence-row-informational {
             grid-template-columns: minmax(160px, 0.55fr) minmax(0, 1.45fr);
-        }
-
-        .system-evidence-row-status-label {
-            grid-template-columns: auto minmax(0, 1fr);
         }
 
         .system-status-pill {
@@ -3696,7 +3706,7 @@ $NavigationLinksHtml
 
         .system-process-snapshot-grid {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
             gap: 14px;
         }
 
@@ -3713,6 +3723,12 @@ $NavigationLinksHtml
             color: #0f172a;
             font-size: 13px;
             font-weight: 650;
+        }
+
+        .system-compact-list-separated {
+            border-top: 1px solid rgba(148, 163, 184, 0.22);
+            margin-top: 0;
+            padding-top: 7px;
         }
 
         .system-compact-list li + li {
@@ -3916,8 +3932,7 @@ $NavigationLinksHtml
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
 
-            .system-service-matrix,
-            .system-process-snapshot-grid {
+            .system-service-matrix {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
         }
@@ -3936,6 +3951,11 @@ $NavigationLinksHtml
             }
 
             .system-evidence-row {
+                grid-template-columns: 1fr;
+                gap: 4px;
+            }
+
+            .system-status-label-row {
                 grid-template-columns: 1fr;
                 gap: 4px;
             }
