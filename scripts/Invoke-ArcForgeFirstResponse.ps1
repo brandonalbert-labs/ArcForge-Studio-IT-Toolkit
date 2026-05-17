@@ -1,5 +1,12 @@
 ﻿# ArcForge First Response
-# ArcForge First Response Report v0.25
+# ArcForge First Response Report v0.26
+#
+# v0.26 function ownership mapping notes:
+# - This pass maps current functions and major code regions to likely future
+#   module owners before any actual file extraction begins.
+# - Comments marked "Future module owner" are planning annotations only.
+# - Do not treat these comments as active dot-sourcing, imports, or runtime
+#   dependencies.
 #
 # v0.25 maintainability pass notes:
 # - This file is still intentionally a single script for the pre-modularization stage.
@@ -106,10 +113,41 @@
 # - Run both General and Developer profiles after each extraction.
 # - Compare console, TXT, HTML, scoring, and generated report behavior before
 #   continuing to the next boundary.
+#
+# Recommended future extraction order:
+# 1. scripts/ArcForge.SoftwareCatalog.ps1
+#    - Start with catalog parsing/detection helpers because they have clearer
+#      boundaries and less presentation coupling.
+# 2. scripts/ArcForge.ConsoleReport.ps1
+#    - Move console/TXT formatting helpers after catalog helpers are stable.
+# 3. scripts/ArcForge.ReportParsing.ps1
+#    - Extract read-only transforms from report lines into section collections.
+# 4. scripts/ArcForge.Checks.*.ps1
+#    - Move evidence collection by domain only after helper ownership is clear.
+# 5. scripts/ArcForge.Html.Navigation.ps1
+#    - Extract sidebar/navigation helpers before the full HTML template.
+# 6. scripts/ArcForge.Html.System.ps1
+#    - Extract System-specific cards/details after navigation boundaries are
+#      verified.
+# 7. scripts/ArcForge.HtmlReport.ps1
+#    - Save the full HTML template pipeline for last because it is the most
+#      presentation-coupled and fragile.
+#
+# Future Index compatibility note:
+# - The Index is not implemented in v0.26.
+# - Future baseline verification will need clean access to collected endpoint
+#   evidence before it is rendered into TXT or HTML.
+# - Avoid making report rendering the only place where evidence meaning exists.
+# - Long term, checks should produce structured findings that can support:
+#   current-state reports, readiness scoring, and Index variance comparisons.
 
 # =============================================================================
 # 00. Parameter Input
 # =============================================================================
+# Future module owner: scripts/ArcForge.Runtime.ps1
+# Notes:
+# - Parameter ownership should remain close to runtime/orchestration setup until
+#   extraction is intentional. Do not add Index parameters in v0.26.
 
 param (
     [ValidateSet("General", "Gaming", "Creator", "Developer", "Homelab", "Secure")]
@@ -119,6 +157,9 @@ param (
 # =============================================================================
 # 01. Runtime Setup and Report Paths
 # =============================================================================
+# Future module owner: scripts/ArcForge.Runtime.ps1
+# Notes:
+# - This region prepares run metadata and report paths used by all outputs.
 # These values are calculated once at startup and reused by the console output,
 # TXT report writer, and HTML report writer. Keep this area side-effect light:
 # it should prepare run metadata, not perform health checks.
@@ -150,6 +191,7 @@ if (-not (Test-Path $ReportFolder)) {
 # =============================================================================
 # 02. Console and TXT Report Output Helpers
 # =============================================================================
+# Future module owner: scripts/ArcForge.ConsoleReport.ps1
 # FUTURE MODULE BOUNDARY: these helpers can eventually move into a reporting
 # output module because they control console/TXT formatting and summary counts.
 # Keep them independent from HTML-specific logic so TXT output remains stable.
@@ -164,6 +206,7 @@ if (-not (Test-Path $ReportFolder)) {
 # - Line: The exact text to add. Defaults to a blank line when omitted.
 # Output:
 # - No direct output. Updates the script-scoped ReportLines list.
+# Future module owner: scripts/ArcForge.ConsoleReport.ps1
 function Add-ReportLine {
     param (
         [string]$Line = ""
@@ -187,6 +230,7 @@ function Add-ReportLine {
 # - Writes to the console.
 # - Adds the same formatted line to $script:ReportLines.
 # - Updates $script:CheckCounts when CountResult is true.
+# Future module owner: scripts/ArcForge.ConsoleReport.ps1
 function Write-Result {
     param (
         [string]$Status,
@@ -230,6 +274,7 @@ function Write-Result {
 # Output:
 # - Writes a blank line and section heading to the console.
 # - Adds the same section marker to $script:ReportLines.
+# Future module owner: scripts/ArcForge.ConsoleReport.ps1
 function Write-Section {
     param (
         [string]$Title
@@ -251,6 +296,7 @@ function Write-Section {
 # - Adds the [SUMMARY] section.
 # - Writes total checks, passed checks, warnings, failures, and overall status.
 # - Uses CountResult:$false so summary lines do not inflate their own totals.
+# Future module owner: scripts/ArcForge.ConsoleReport.ps1
 function Write-Summary {
     Write-Section -Title "SUMMARY"
 
@@ -290,6 +336,7 @@ function Write-Summary {
 # =============================================================================
 # 03. Software Catalog Detection Helpers
 # =============================================================================
+# Future module owner: scripts/ArcForge.SoftwareCatalog.ps1
 # FUTURE MODULE BOUNDARY: these helpers parse the ArcForge Software Catalog and
 # translate human-editable catalog rows into concrete detection checks. They are
 # used by the Software Readiness section only; avoid coupling them to HTML.
@@ -310,6 +357,7 @@ function Write-Summary {
 # Output:
 # - $true when any detection method finds the software.
 # - $false when none of the checks find it.
+# Future module owner: scripts/ArcForge.SoftwareCatalog.ps1
 function Test-SoftwareInstalled {
     param (
         [string]$SoftwareName = "",
@@ -554,6 +602,7 @@ function Test-SoftwareInstalled {
 # - Value: Any catalog cell value.
 # Output:
 # - $true if the value is "yes" after trimming/lowercasing; otherwise $false.
+# Future module owner: scripts/ArcForge.SoftwareCatalog.ps1
 function Test-YesValue {
     param (
         [object]$Value
@@ -573,6 +622,7 @@ function Test-YesValue {
 # Output:
 # - Trimmed string value when the column exists.
 # - Empty string when the column is missing.
+# Future module owner: scripts/ArcForge.SoftwareCatalog.ps1
 function Get-CatalogValue {
     param (
         [pscustomobject]$Row,
@@ -600,6 +650,7 @@ function Get-CatalogValue {
 #
 # Output:
 # - A unique array of wildcard patterns suitable for DisplayName -like checks.
+# Future module owner: scripts/ArcForge.SoftwareCatalog.ps1
 function Get-DisplayNamePatterns {
     param (
         [string]$SoftwareName,
@@ -642,6 +693,7 @@ function Get-DisplayNamePatterns {
 # - DetectionTarget: Raw detection target text from the CSV.
 # Output:
 # - Array of trimmed candidate strings.
+# Future module owner: scripts/ArcForge.SoftwareCatalog.ps1
 function Split-DetectionCandidates {
     param (
         [string]$DetectionTarget
@@ -672,6 +724,7 @@ function Split-DetectionCandidates {
 #   - DisplayNamePatterns
 #   - CommonPaths
 #   - Services
+# Future module owner: scripts/ArcForge.SoftwareCatalog.ps1
 function Get-SoftwareDetectionConfig {
     param (
         [pscustomobject]$CatalogRow
@@ -742,6 +795,7 @@ function Get-SoftwareDetectionConfig {
 # =============================================================================
 # 04. Report Line Parsing Helpers
 # =============================================================================
+# Future module owner: scripts/ArcForge.ReportParsing.ps1
 # FUTURE MODULE BOUNDARY: HTML report generation starts from the same raw lines
 # used for TXT output. These parser helpers should remain read-only transforms;
 # they should not run checks, alter counters, or mutate report output.
@@ -756,6 +810,7 @@ function Get-SoftwareDetectionConfig {
 # - ReportLines: The full collected report output.
 # Output:
 # - Hashtable where each known section name maps to a list of lines.
+# Future module owner: scripts/ArcForge.ReportParsing.ps1
 function Get-ArcForgeReportSections {
     param (
         [string[]]$ReportLines
@@ -803,6 +858,7 @@ function Get-ArcForgeReportSections {
 # =============================================================================
 # 05. Static HTML Report Generation Pipeline
 # =============================================================================
+# Future module owner: scripts/ArcForge.HtmlReport.ps1
 # FUTURE MODULE BOUNDARY: New-ArcForgeHtmlReport is currently the container for
 # static HTML rendering. It owns HTML helper functions, CSS, navigation, section
 # markup, and final file writing. Split this carefully later; do not mix it with
@@ -828,6 +884,7 @@ function Get-ArcForgeReportSections {
 # - ReportLines: Raw TXT report lines used to build sections and findings.
 # Output:
 # - Writes a complete HTML document to OutputPath.
+# Future module owner: scripts/ArcForge.HtmlReport.ps1
 function New-ArcForgeHtmlReport {
     param (
         [string]$OutputPath,
@@ -850,6 +907,7 @@ function New-ArcForgeHtmlReport {
     #
     # This prevents report values containing characters like <, >, or & from
     # breaking the HTML structure or being interpreted as markup.
+    # Future module owner: scripts/ArcForge.HtmlReport.ps1
     function ConvertTo-HtmlSafeText {
         param (
             [string]$Text
@@ -867,6 +925,7 @@ function New-ArcForgeHtmlReport {
     # Output:
     # - A string containing one or more <li> elements.
     # - A muted placeholder <li> when the section has no findings.
+    # Future module owner: scripts/ArcForge.HtmlReport.ps1
     function ConvertTo-ArcForgeHtmlFindingList {
         param (
             [object[]]$Lines,
@@ -911,6 +970,7 @@ function New-ArcForgeHtmlReport {
     #
     # Used by readiness scoring so combined sections like System can be counted
     # the same way as single sections like Network or Security.
+    # Future module owner: scripts/ArcForge.HtmlReport.ps1
     function Get-ArcForgeFlattenedLines {
         param (
             [object[]]$Lines
@@ -949,6 +1009,7 @@ function New-ArcForgeHtmlReport {
     #
     # Output:
     # - PSCustomObject containing name, status label, CSS class, counts, and summary.
+    # Future module owner: scripts/ArcForge.Html.Navigation.ps1
     function Get-ArcForgeSectionReadiness {
         param (
             [string]$Name,
@@ -997,6 +1058,7 @@ function New-ArcForgeHtmlReport {
     #
     # The card data is prepared by Get-ArcForgeSectionReadiness. This helper only
     # converts those objects into HTML markup for the final report.
+    # Future module owner: scripts/ArcForge.Html.Navigation.ps1
     function New-ArcForgeReadinessOverviewHtml {
         param (
             [object[]]$ReadinessCards
@@ -1107,6 +1169,7 @@ $CardsHtml
     # Troubleshooting rule:
     # - If the top badge looks wrong, inspect the endpoint-summary CSS classes and
     #   the values passed into this helper before changing health-check logic.
+    # Future module owner: scripts/ArcForge.HtmlReport.ps1
     function New-ArcForgeEndpointSummaryHtml {
         param (
             [string]$ReportId,
@@ -1218,6 +1281,7 @@ $CardsHtml
     #
     # Output:
     # - A category name used as a heading in the Recommended Actions panel.
+    # Future module owner: scripts/ArcForge.HtmlReport.ps1
     function Get-ArcForgeActionCategory {
         param (
             [string]$Finding
@@ -1278,6 +1342,7 @@ $CardsHtml
     #
     # Output:
     # - A plain English remediation suggestion displayed under the action item.
+    # Future module owner: scripts/ArcForge.HtmlReport.ps1
     function Get-ArcForgeSuggestedAction {
         param (
             [string]$Finding,
@@ -1372,6 +1437,7 @@ $CardsHtml
     #
     # Output:
     # - PSCustomObject items with Category, Severity, Title, Detail, and SuggestedAction.
+    # Future module owner: scripts/ArcForge.HtmlReport.ps1
     function Get-ArcForgeActionItems {
         param (
             [string[]]$ReportLines,
@@ -1479,6 +1545,7 @@ $CardsHtml
     #
     # Output:
     # - A string containing the complete Recommended Actions <section> block.
+    # Future module owner: scripts/ArcForge.HtmlReport.ps1
     function New-ArcForgeRecommendedActionsHtml {
         param (
             [object[]]$ActionItems
@@ -1637,6 +1704,7 @@ $GroupsHtml
     #   to the report and does not run additional system checks.
     # - Keeping this in its own helper makes the v0.24 change easier to audit or
     #   adjust without touching the console/TXT reporting path.
+    # Future module owner: scripts/ArcForge.Html.System.ps1
     function New-ArcForgeSystemEvidenceHtml {
         param (
             [string]$ComputerName,
@@ -1651,6 +1719,7 @@ $GroupsHtml
         # Converts one raw finding line like:
         # [OK] OS Name: Microsoft Windows 10...
         # into a small object the HTML renderer can place in a key/value row.
+        # Future module owner: scripts/ArcForge.Html.System.ps1
         function ConvertTo-ArcForgeSystemEvidenceRecord {
             param (
                 [string]$Line
@@ -1675,6 +1744,7 @@ $GroupsHtml
         # Looks up the first finding with a matching label in an existing section.
         # Missing rows are rendered as muted placeholders so the HTML remains
         # stable even if a check fails before writing every expected line.
+        # Future module owner: scripts/ArcForge.Html.System.ps1
         function Get-ArcForgeSystemEvidenceRecord {
             param (
                 [object[]]$Lines,
@@ -1701,6 +1771,7 @@ $GroupsHtml
         # Renders a single compact status-first key/value row.
         # The status class only affects the HTML report and does not change
         # readiness scoring or report data.
+        # Future module owner: scripts/ArcForge.Html.System.ps1
         function New-ArcForgeSystemEvidenceRowHtml {
             param (
                 [object]$Record,
@@ -1734,6 +1805,7 @@ $GroupsHtml
         # cramming long evidence values into a narrow responsive card.
         # The full evidence value should remain available in the matching
         # details section.
+        # Future module owner: scripts/ArcForge.Html.System.ps1
         function New-ArcForgeSystemStatusLabelRowHtml {
             param (
                 [object]$Record,
@@ -1763,6 +1835,7 @@ $GroupsHtml
         # Renders identity/platform evidence without a health-style OK pill.
         # Endpoint identity fields are evidence capture values, not pass/fail
         # health checks, so this quieter row avoids implying a status verdict.
+        # Future module owner: scripts/ArcForge.Html.System.ps1
         function New-ArcForgeSystemEvidenceOnlyRowHtml {
             param (
                 [object]$Record,
@@ -1802,6 +1875,7 @@ $GroupsHtml
         # Builds a System snapshot panel. Optional anchor-style footer links let
         # the snapshot stay compact while still giving technicians a clear path
         # to deeper static evidence sections later in the same HTML report.
+        # Future module owner: scripts/ArcForge.Html.System.ps1
         function New-ArcForgeSystemPanelHtml {
             param (
                 [string]$Title,
@@ -1848,6 +1922,7 @@ $LinkHtml
         # Wraps a System body block in a native collapsible card.
         # This keeps the System section segmented without adding JavaScript or
         # changing the underlying evidence/check logic.
+        # Future module owner: scripts/ArcForge.Html.System.ps1
         function New-ArcForgeSystemCollapsibleCardHtml {
             param (
                 [string]$Id = "",
@@ -1894,6 +1969,7 @@ $BodyHtml
         # Builds a detail anchor section from existing report lines only.
         # These sections are intentionally simple and static: the snapshot cards
         # link here when a tech wants more evidence without requiring JavaScript.
+        # Future module owner: scripts/ArcForge.Html.System.ps1
         function New-ArcForgeSystemDetailSectionHtml {
             param (
                 [string]$Id,
@@ -2244,6 +2320,7 @@ $ServiceDetailsHtml
     # - This does not change check logic, scoring, console output, or TXT output.
     # - The sidebar status should always match the Readiness Overview card that
     #   was built from the same readiness object.
+    # Future module owner: scripts/ArcForge.Html.Navigation.ps1
     function New-ArcForgeSidebarStatusSegmentsHtml {
         param (
             [string]$Status
@@ -2316,6 +2393,7 @@ $ServiceDetailsHtml
     #
     # Output:
     # - A string containing the complete sidebar <aside> block.
+    # Future module owner: scripts/ArcForge.Html.Navigation.ps1
     function New-ArcForgeReportNavigationHtml {
         param (
             [object[]]$ReadinessCards
@@ -4285,6 +4363,9 @@ $RecommendedActionsHtml
 # =============================================================================
 # 06. Run Header
 # =============================================================================
+# Future module owner: scripts/ArcForge.Runtime.ps1
+# Notes:
+# - This region starts the active run and writes initial identity metadata.
 # The execution path starts here. Everything above this point defines helpers;
 # everything below this point collects evidence, writes findings, and emits
 # reports.
@@ -4307,6 +4388,10 @@ Write-Result -Status "OK" -Label "Active Profile:" -Value $BattlestationProfile
 # =============================================================================
 # 07. Evidence Collection - System Identity
 # =============================================================================
+# Future module owner: scripts/ArcForge.Checks.System.ps1
+# Notes:
+# - This region collects OS identity evidence only. Keep collection separate
+#   from System HTML rendering and future Index comparison logic.
 # Health-check sections below should remain straightforward evidence collection.
 # Each section writes console/TXT findings through Write-Result; the HTML report
 # later reuses those same captured lines instead of running separate checks.
@@ -4328,6 +4413,9 @@ catch {
 # =============================================================================
 # 08. Evidence Collection - Uptime / Vital Signs
 # =============================================================================
+# Future module owner: scripts/ArcForge.Checks.System.ps1
+# Notes:
+# - This region collects last-boot and uptime evidence for System/Vital Signs.
 
 # Uptime Check
 Write-Section -Title "UPTIME"
@@ -4353,6 +4441,9 @@ catch {
 # =============================================================================
 # 09. Evidence Collection - Process Health
 # =============================================================================
+# Future module owner: scripts/ArcForge.Checks.System.ps1
+# Notes:
+# - This region collects process responsiveness evidence for System reporting.
 
 # Process Readiness Checks
 Write-Section -Title "PROCESSES"
@@ -4393,6 +4484,9 @@ catch {
 # =============================================================================
 # 10. Evidence Collection - Core Services
 # =============================================================================
+# Future module owner: scripts/ArcForge.Checks.System.ps1
+# Notes:
+# - This region collects core Windows service state evidence.
 
 # Service Readiness Checks
 Write-Section -Title "SERVICES"
@@ -4444,6 +4538,9 @@ foreach ($Service in $CoreServices) {
 # =============================================================================
 # 11. Evidence Collection - Storage
 # =============================================================================
+# Future module owner: scripts/ArcForge.Checks.System.ps1
+# Notes:
+# - This region collects primary drive capacity evidence for System reporting.
 
 # Storage Check
 Write-Section -Title "STORAGE"
@@ -4474,6 +4571,10 @@ catch {
 # =============================================================================
 # 12. Evidence Collection - Network
 # =============================================================================
+# Future module owner: scripts/ArcForge.Checks.Network.ps1
+# Notes:
+# - This region collects gateway, external reachability, and DNS evidence.
+# - Keep offline-first interpretation separate from raw network collection.
 
 # Network Checks
 Write-Section -Title "NETWORK"
@@ -4528,6 +4629,10 @@ catch {
 # =============================================================================
 # 13. Evidence Collection - Software Readiness
 # =============================================================================
+# Future module owner: scripts/ArcForge.Checks.Software.ps1
+# Notes:
+# - This region orchestrates profile/catalog evaluation. Catalog helper ownership
+#   remains with scripts/ArcForge.SoftwareCatalog.ps1.
 
 # Software Checks
 Write-Section -Title "SOFTWARE"
@@ -4607,6 +4712,9 @@ else {
 # =============================================================================
 # 14. Evidence Collection - Security Posture
 # =============================================================================
+# Future module owner: scripts/ArcForge.Checks.Security.ps1
+# Notes:
+# - This region collects firewall, antivirus, and local administrator evidence.
 
 # Security Checks
 Write-Section -Title "SECURITY"
@@ -4675,6 +4783,9 @@ catch {
 # =============================================================================
 # 15. Evidence Collection - Windows Update Readiness
 # =============================================================================
+# Future module owner: scripts/ArcForge.Checks.Updates.ps1
+# Notes:
+# - This region collects update service, pending reboot, and hotfix evidence.
 
 # Windows Update Checks
 Write-Section -Title "UPDATES"
@@ -4765,6 +4876,10 @@ catch {
 # =============================================================================
 # 16. Report Finalization
 # =============================================================================
+# Future module owner: scripts/ArcForge.Runtime.ps1
+# Notes:
+# - This region coordinates final summary, TXT output, and static HTML output.
+# - Keep generated reports as untracked artifacts.
 # Finalization writes the accumulated TXT buffer and then renders the static HTML
 # report from the same data. Generated reports should remain untracked artifacts.
 
