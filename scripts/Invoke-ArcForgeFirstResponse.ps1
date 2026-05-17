@@ -1,4 +1,4 @@
-# ArcForge First Response
+﻿# ArcForge First Response
 # ArcForge First Response Report v0.24
 
 param (
@@ -1631,6 +1631,52 @@ $LinkHtml
 "@
         }
 
+        # Wraps a System body block in a native collapsible card.
+        # This keeps the System section segmented without adding JavaScript or
+        # changing the underlying evidence/check logic.
+        function New-ArcForgeSystemCollapsibleCardHtml {
+            param (
+                [string]$Id = "",
+                [string]$Title,
+                [string]$Description,
+                [string]$BodyHtml,
+                [string]$ExtraClass = "",
+                [bool]$OpenByDefault = $false
+            )
+
+            $SafeTitle = ConvertTo-HtmlSafeText $Title
+            $SafeDescription = ConvertTo-HtmlSafeText $Description
+            $CardClass = "system-collapsible-card"
+            $IdAttribute = ""
+            $OpenAttribute = ""
+
+            if (-not [string]::IsNullOrWhiteSpace($ExtraClass)) {
+                $CardClass = "$CardClass $ExtraClass"
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace($Id)) {
+                $SafeId = ConvertTo-HtmlSafeText $Id
+                $IdAttribute = " id=`"$SafeId`""
+            }
+
+            if ($OpenByDefault) {
+                $OpenAttribute = " open"
+            }
+
+            return @"
+                <details$IdAttribute class="$CardClass"$OpenAttribute>
+                    <summary class="system-collapsible-summary">
+                        <span class="system-collapsible-title">$SafeTitle</span>
+                        <span class="system-collapsible-chevron" aria-hidden="true">›</span>
+                    </summary>
+                    <div class="system-collapsible-card-body">
+                        <p class="system-collapsible-description">$SafeDescription</p>
+$BodyHtml
+                    </div>
+                </details>
+"@
+        }
+
         # Builds a detail anchor section from existing report lines only.
         # These sections are intentionally simple and static: the snapshot cards
         # link here when a tech wants more evidence without requiring JavaScript.
@@ -1642,9 +1688,6 @@ $LinkHtml
                 [object[]]$Lines
             )
 
-            $SafeId = ConvertTo-HtmlSafeText $Id
-            $SafeTitle = ConvertTo-HtmlSafeText $Title
-            $SafeDescription = ConvertTo-HtmlSafeText $Description
             $DetailRows = @()
 
             foreach ($Line in (Get-ArcForgeFlattenedLines -Lines $Lines)) {
@@ -1662,17 +1705,13 @@ $LinkHtml
 
             $DetailRowsHtml = $DetailRows -join "`n"
 
-            return @"
-                <article id="$SafeId" class="system-detail-card">
-                    <div class="system-panel-header">
-                        <h3>$SafeTitle</h3>
-                        <p>$SafeDescription</p>
-                    </div>
-                    <div class="system-evidence-rows">
+            $DetailBodyHtml = @"
+                        <div class="system-evidence-rows">
 $DetailRowsHtml
-                    </div>
-                </article>
+                        </div>
 "@
+
+            return New-ArcForgeSystemCollapsibleCardHtml -Id $Id -Title $Title -Description $Description -BodyHtml $DetailBodyHtml -ExtraClass "system-detail-collapsible-card"
         }
 
         $ComputerValue = if ([string]::IsNullOrWhiteSpace($ComputerName)) { "Evidence not captured." } else { $ComputerName }
@@ -1939,16 +1978,22 @@ $($ServiceCells -join "`n")
         $ProcessDetailsHtml = New-ArcForgeSystemDetailSectionHtml -Id "system-process-details" -Title "Process Health Details" -Description "Process evidence captured by the current ArcForge process checks, including hung application status and the top memory consumers." -Lines $ProcessLines
         $ServiceDetailsHtml = New-ArcForgeSystemDetailSectionHtml -Id "system-core-services-details" -Title "Core Services Details" -Description "Core Windows service evidence captured by the current ArcForge service checks. This confirms observed service state only; it does not compare against a service baseline or drift policy." -Lines $ServiceLines
 
-        return @"
-        <section id="system" class="card section system-evidence">
-            <div class="section-title">
-                <h2>System</h2>
-                <p>Endpoint evidence grouped for fast offline triage. The snapshot surfaces what matters first, while detail anchors expose the supporting evidence without JavaScript.</p>
-            </div>
-            <div class="system-evidence-grid">
+        $SystemOverviewBodyHtml = @"
+                        <div class="system-evidence-grid">
 $Panels
+                        </div>
+"@
+
+        $SystemOverviewHtml = New-ArcForgeSystemCollapsibleCardHtml -Title "System Overview" -Description "Snapshot cards for endpoint platform, vital signs, storage, process health, and core service evidence." -BodyHtml $SystemOverviewBodyHtml -ExtraClass "system-overview-card" -OpenByDefault $true
+
+        return @"
+        <section id="system" class="section system-evidence">
+            <div class="section-title system-section-title">
+                <h2>System</h2>
+                <p>Endpoint evidence grouped for fast offline triage. System Overview opens by default for quick triage; deeper System details start collapsed and can be expanded without JavaScript.</p>
             </div>
-            <div class="system-detail-sections" aria-label="System detail sections">
+            <div class="system-collapsible-stack" aria-label="System evidence sections">
+$SystemOverviewHtml
 $EndpointDetailsHtml
 $VitalDetailsHtml
 $StorageDetailsHtml
@@ -3276,6 +3321,89 @@ $NavigationLinksHtml
            - HTML/CSS only. No JavaScript.
            - Presentation-only. No new checks, scoring changes, console changes,
              or TXT report changes. */
+        .system-collapsible-stack {
+            display: grid;
+            gap: 14px;
+        }
+
+        .system-collapsible-card {
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+            min-width: 0;
+            overflow: hidden;
+            scroll-margin-top: 24px;
+        }
+
+        .system-collapsible-summary {
+            align-items: center;
+            color: #0f172a;
+            cursor: pointer;
+            display: flex;
+            font-size: 15px;
+            font-weight: 850;
+            gap: 16px;
+            justify-content: space-between;
+            list-style: none;
+            min-height: 58px;
+            padding: 0 1cm;
+            user-select: none;
+        }
+
+        .system-collapsible-summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .system-collapsible-summary::marker {
+            content: "";
+        }
+
+        .system-collapsible-card[open] > .system-collapsible-summary {
+            border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+        }
+
+        .system-collapsible-chevron {
+            align-items: center;
+            color: #64748b;
+            display: inline-flex;
+            flex: 0 0 18px;
+            font-size: 0;
+            height: 18px;
+            justify-content: center;
+            line-height: 0;
+            position: relative;
+            width: 18px;
+        }
+
+        .system-collapsible-chevron::before {
+            border-bottom: 2px solid currentColor;
+            border-right: 2px solid currentColor;
+            content: "";
+            display: block;
+            height: 7px;
+            transform: rotate(-45deg);
+            transform-origin: center;
+            transition: transform 0.2s ease;
+            width: 7px;
+        }
+
+        .system-collapsible-card[open] > .system-collapsible-summary .system-collapsible-chevron::before {
+            transform: rotate(45deg);
+        }
+
+        .system-collapsible-card-body {
+            display: grid;
+            gap: 14px;
+            padding: 14px;
+        }
+
+        .system-collapsible-description {
+            color: var(--muted);
+            font-size: 13px;
+            margin: 0;
+        }
+
         .system-evidence-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
