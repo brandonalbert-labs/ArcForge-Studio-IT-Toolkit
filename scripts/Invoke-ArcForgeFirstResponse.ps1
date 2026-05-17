@@ -8,6 +8,105 @@
 # - Do not change console, TXT, HTML output, engine logic, or scoring as part of
 #   structure-only cleanup work.
 
+#
+# FUTURE MODULE BOUNDARY INVENTORY - BLUEPRINT ONLY
+# -----------------------------------------------------------------------------
+# This inventory documents likely future file/module boundaries for ArcForge.
+# It is intentionally comment-only. Nothing in this list is dot-sourced,
+# imported, executed, or required yet.
+#
+# The purpose of this pass is to reduce risk before modularization by making
+# the intended ownership boundaries visible while the project still runs from
+# this single script.
+#
+# Keep root launcher:
+# - arcforge.ps1
+#   - User-facing entry point.
+#   - Should stay small and call the main script.
+#
+# Keep current main orchestrator for now:
+# - scripts/Invoke-ArcForgeFirstResponse.ps1
+#   - Current single-file implementation.
+#   - Should remain the active orchestrator until extraction is deliberate and
+#     tested in small steps.
+#
+# Future support modules may eventually include:
+#
+# - scripts/ArcForge.Runtime.ps1
+#   - Parameter and run metadata setup.
+#   - Report path setup.
+#   - Shared constants used across the run.
+#
+# - scripts/ArcForge.ConsoleReport.ps1
+#   - Add-ReportLine.
+#   - Write-Result.
+#   - Write-Section.
+#   - Write-Summary.
+#   - Console and TXT output formatting.
+#
+# - scripts/ArcForge.SoftwareCatalog.ps1
+#   - Test-SoftwareInstalled.
+#   - Get-CatalogValue.
+#   - Get-SoftwareDisplayName.
+#   - Get-SoftwareDetectionMethod.
+#   - Get-SoftwareDetectionTarget.
+#   - Get-SoftwareCatalogRows.
+#   - Split-SoftwareDetectionTargets.
+#   - Get-SoftwareDetectionConfig.
+#
+# - scripts/ArcForge.ReportParsing.ps1
+#   - Get-ArcForgeReportSections.
+#   - Future read-only transforms from raw report lines into report sections.
+#
+# - scripts/ArcForge.HtmlReport.ps1
+#   - New-ArcForgeHtmlReport.
+#   - Shared HTML safety helpers.
+#   - Shared HTML section rendering.
+#   - Final static HTML template pipeline.
+#
+# - scripts/ArcForge.Html.System.ps1
+#   - System-specific HTML rendering helpers.
+#   - Build-SystemEvidenceSection.
+#   - System overview and detail cards.
+#
+# - scripts/ArcForge.Html.Navigation.ps1
+#   - Sidebar navigation helpers.
+#   - Readiness segment helpers.
+#   - Section anchor and link construction.
+#
+# - scripts/ArcForge.Checks.System.ps1
+#   - System identity.
+#   - Uptime and Vital Signs.
+#   - Process Health.
+#   - Core Services.
+#   - Storage.
+#
+# - scripts/ArcForge.Checks.Network.ps1
+#   - Gateway reachability.
+#   - External reachability.
+#   - DNS resolution.
+#   - Future offline-safe networking interpretation.
+#
+# - scripts/ArcForge.Checks.Software.ps1
+#   - Software Readiness checks.
+#   - Profile and catalog evaluation orchestration.
+#
+# - scripts/ArcForge.Checks.Security.ps1
+#   - Firewall posture.
+#   - Antivirus provider evidence.
+#   - Local administrators review.
+#
+# - scripts/ArcForge.Checks.Updates.ps1
+#   - Windows Update services.
+#   - Pending reboot evidence.
+#   - Hotfix evidence.
+#
+# Future extraction rule of thumb:
+# - Move one boundary at a time.
+# - Run both General and Developer profiles after each extraction.
+# - Compare console, TXT, HTML, scoring, and generated report behavior before
+#   continuing to the next boundary.
+
 # =============================================================================
 # 00. Parameter Input
 # =============================================================================
