@@ -1,4 +1,4 @@
-﻿# ArcForge First Response
+# ArcForge First Response
 # ArcForge First Response Report v0.24
 
 param (
@@ -1546,6 +1546,36 @@ $GroupsHtml
 "@
         }
 
+        # Renders a compact status + label row for snapshot cards that should
+        # stay scannable at narrow widths. Detailed values remain in the matching
+        # collapsible detail section, so the overview card does not cram long
+        # timestamps or evidence strings into a small responsive card.
+        function New-ArcForgeSystemStatusLabelRowHtml {
+            param (
+                [object]$Record,
+                [string]$DisplayLabel
+            )
+
+            $Status = if ($Record.Status) { [string]$Record.Status } else { "UNKNOWN" }
+            $StatusClass = switch ($Status) {
+                "OK"      { "system-status-ok" }
+                "WARN"    { "system-status-warn" }
+                "FAIL"    { "system-status-fail" }
+                default   { "system-status-unknown" }
+            }
+
+            $Label = if ([string]::IsNullOrWhiteSpace($DisplayLabel)) { $Record.Label } else { $DisplayLabel }
+            $SafeStatus = ConvertTo-HtmlSafeText $Status
+            $SafeLabel = ConvertTo-HtmlSafeText (($Label -replace ':$', '').Trim())
+
+            return @"
+                    <div class="system-evidence-row system-evidence-row-status-label">
+                        <span class="system-status-pill $StatusClass">$SafeStatus</span>
+                        <span class="system-evidence-label">$SafeLabel</span>
+                    </div>
+"@
+        }
+
         # Renders identity/platform evidence without a health-style OK pill.
         # Endpoint identity fields are evidence capture values, not pass/fail
         # health checks, so this quieter row avoids implying a status verdict.
@@ -1734,8 +1764,8 @@ $DetailRowsHtml
         $UptimeDaysRecord = Get-ArcForgeSystemEvidenceRecord -Lines $UptimeLines -Label "Uptime Days:"
 
         $VitalRows = @(
-            New-ArcForgeSystemEvidenceRowHtml -Record $LastBootRecord -DisplayLabel "Last Boot"
-            New-ArcForgeSystemEvidenceRowHtml -Record $UptimeDaysRecord -DisplayLabel "Uptime Days"
+            New-ArcForgeSystemStatusLabelRowHtml -Record $LastBootRecord -DisplayLabel "Last Boot"
+            New-ArcForgeSystemStatusLabelRowHtml -Record $UptimeDaysRecord -DisplayLabel "Uptime"
         ) -join "`n"
 
         $DriveRecord = Get-ArcForgeSystemEvidenceRecord -Lines $StorageLines -Label "Drive:"
@@ -1957,7 +1987,7 @@ $($ServiceCells -join "`n")
 
         $Panels = @(
             New-ArcForgeSystemPanelHtml -Title "Endpoint Platform" -Description "Local identity and operating system evidence." -RowsHtml $EndpointRows -ExtraClass "system-panel-wide" -LinkHref "#system-endpoint-platform-details" -LinkText "Endpoint Platform Details"
-            New-ArcForgeSystemPanelHtml -Title "Vital Signs" -Description "Boot and uptime indicators for quick stability review." -RowsHtml $VitalRows -LinkHref "#system-vital-signs-details" -LinkText "Vital Signs Details"
+            New-ArcForgeSystemPanelHtml -Title "Vital Signs" -Description "Boot and uptime signals for quick stability review." -RowsHtml $VitalRows -LinkHref "#system-vital-signs-details" -LinkText "Vital Signs Details"
             New-ArcForgeSystemPanelHtml -Title "Primary Drive Storage" -Description "Primary system drive capacity." -RowsHtml $StorageRows -LinkHref "#system-storage-details" -LinkText "Storage Details"
             New-ArcForgeSystemPanelHtml -Title "Process Health" -Description "Snapshot of hung applications and the top five memory consumers." -RowsHtml $ProcessRows -ExtraClass "system-panel-wide" -LinkHref "#system-process-details" -LinkText "Process Health Details"
             New-ArcForgeSystemPanelHtml -Title "Core Services Matrix" -Description "Critical Windows service pipes that affect triage trust." -RowsHtml $ServiceRows -ExtraClass "system-panel-wide" -LinkHref "#system-core-services-details" -LinkText "Core Services Details"
@@ -3419,6 +3449,11 @@ $NavigationLinksHtml
             min-width: 0;
         }
 
+        .system-evidence-panel {
+            display: flex;
+            flex-direction: column;
+        }
+
         .system-panel-wide {
             grid-column: 1 / -1;
         }
@@ -3460,6 +3495,10 @@ $NavigationLinksHtml
 
         .system-evidence-row-informational {
             grid-template-columns: minmax(160px, 0.55fr) minmax(0, 1.45fr);
+        }
+
+        .system-evidence-row-status-label {
+            grid-template-columns: auto minmax(0, 1fr);
         }
 
         .system-status-pill {
@@ -3612,13 +3651,13 @@ $NavigationLinksHtml
         }
 
         .system-panel-footer {
-            border-top: 1px solid rgba(148, 163, 184, 0.22);
-            margin-top: 12px;
-            padding-top: 0;
+            margin-top: auto;
+            padding-top: 12px;
         }
 
         .system-panel-link {
             align-items: center;
+            border-top: 1px solid rgba(148, 163, 184, 0.22);
             color: #0f172a;
             display: flex;
             font-size: 13px;
