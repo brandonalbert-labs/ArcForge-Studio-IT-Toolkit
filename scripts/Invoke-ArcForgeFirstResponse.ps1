@@ -1,5 +1,13 @@
 ﻿# ArcForge First Response
-# ArcForge First Response Report v0.26
+# ArcForge First Response Report v0.27
+#
+# v0.27 software catalog boundary cleanup notes:
+# - This pass checks whether the Software Catalog helpers are clean enough to
+#   become the first safe extraction candidate in a future release.
+# - The goal is still preparation only: no module files, dot-sourcing, runtime
+#   parameters, detection changes, output changes, or scoring changes are added.
+# - Keep catalog helpers independent from console output, TXT output, HTML
+#   rendering, readiness scoring, and runtime orchestration.
 #
 # v0.26 function ownership mapping notes:
 # - This pass maps current functions and major code regions to likely future
@@ -53,12 +61,10 @@
 #
 # - scripts/ArcForge.SoftwareCatalog.ps1
 #   - Test-SoftwareInstalled.
+#   - Test-YesValue.
 #   - Get-CatalogValue.
-#   - Get-SoftwareDisplayName.
-#   - Get-SoftwareDetectionMethod.
-#   - Get-SoftwareDetectionTarget.
-#   - Get-SoftwareCatalogRows.
-#   - Split-SoftwareDetectionTargets.
+#   - Get-DisplayNamePatterns.
+#   - Split-DetectionCandidates.
 #   - Get-SoftwareDetectionConfig.
 #
 # - scripts/ArcForge.ReportParsing.ps1
@@ -340,6 +346,17 @@ function Write-Summary {
 # FUTURE MODULE BOUNDARY: these helpers parse the ArcForge Software Catalog and
 # translate human-editable catalog rows into concrete detection checks. They are
 # used by the Software Readiness section only; avoid coupling them to HTML.
+#
+# Software Catalog extraction notes:
+# - This section is the preferred first real extraction target after v0.27.
+# - These helpers should remain independent from console output, TXT output,
+#   HTML rendering, readiness scoring, and runtime orchestration.
+# - Prefer plain inputs and plain return values so these helpers can later move
+#   into scripts/ArcForge.SoftwareCatalog.ps1 with minimal risk.
+# - Test-SoftwareInstalled reads local endpoint state for detection, but it
+#   should still only return a Boolean result and avoid report-writing effects.
+# - Do not add report-writing side effects to catalog helpers.
+# - Do not change detection behavior during extraction prep.
 
 # Determines whether a catalog software item appears to be installed.
 #
@@ -357,6 +374,9 @@ function Write-Summary {
 # Output:
 # - $true when any detection method finds the software.
 # - $false when none of the checks find it.
+# Boundary expectation:
+# - Reads endpoint state, but does not write console/TXT/HTML report output,
+#   mutate readiness scoring, or control runtime flow.
 # Future module owner: scripts/ArcForge.SoftwareCatalog.ps1
 function Test-SoftwareInstalled {
     param (
@@ -648,6 +668,9 @@ function Get-CatalogValue {
 # - "FFmpeg (full)" also produces a pattern for "FFmpeg".
 # - A detection target like "matching Google Chrome" produces "*Google Chrome*".
 #
+# Input:
+# - SoftwareName: Friendly catalog name.
+# - DetectionTarget: Raw detection target text from the CSV.
 # Output:
 # - A unique array of wildcard patterns suitable for DisplayName -like checks.
 # Future module owner: scripts/ArcForge.SoftwareCatalog.ps1
@@ -716,6 +739,10 @@ function Split-DetectionCandidates {
 # of commands, services, paths, and registry patterns. This helper bridges that
 # gap by parsing the row and returning a standardized detection config object.
 #
+# Helper relationship:
+# - Uses Get-CatalogValue, Split-DetectionCandidates, and Get-DisplayNamePatterns
+#   to turn one CSV row into plain arrays for Test-SoftwareInstalled.
+#
 # Input:
 # - CatalogRow: One Import-Csv software catalog row.
 # Output:
@@ -724,6 +751,9 @@ function Split-DetectionCandidates {
 #   - DisplayNamePatterns
 #   - CommonPaths
 #   - Services
+# Boundary expectation:
+# - Returns data only; it should not perform installation checks or write report
+#   output.
 # Future module owner: scripts/ArcForge.SoftwareCatalog.ps1
 function Get-SoftwareDetectionConfig {
     param (
