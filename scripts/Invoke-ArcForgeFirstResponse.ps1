@@ -1,5 +1,15 @@
-﻿# ArcForge First Response
-# ArcForge First Response Report v0.28
+# ArcForge First Response
+# ArcForge First Response Report v0.29
+#
+# v0.29 console/TXT report boundary prep notes:
+# - This pass documents the console and TXT output boundary before any future
+#   extraction into scripts/ArcForge.ConsoleReport.ps1.
+# - No console strings, TXT strings, scoring, detection logic, HTML, CSS, or
+#   report behavior changes are intended.
+# - Keep output-writing centralized through Add-ReportLine, Write-Result,
+#   Write-Section, and Write-Summary where practical.
+# - Health-check code should collect evidence and call output helpers; it should
+#   not own formatting decisions long term.
 #
 # v0.28 software catalog module extraction notes:
 # - v0.28 extracts the Software Catalog helper functions into
@@ -60,11 +70,14 @@
 #   - Shared constants used across the run.
 #
 # - scripts/ArcForge.ConsoleReport.ps1
+#   - Planned, not extracted in v0.29.
 #   - Add-ReportLine.
 #   - Write-Result.
 #   - Write-Section.
 #   - Write-Summary.
 #   - Console and TXT output formatting.
+#   - Current direct run-header and finalization Write-Host lines should be
+#     reviewed before extraction so the visible console output stays identical.
 #
 # - scripts/ArcForge.SoftwareCatalog.ps1
 #   - Extracted in v0.28.
@@ -134,7 +147,8 @@
 #    - Extracted in v0.28. Keep this module focused on catalog parsing and
 #      detection helpers only.
 # 2. scripts/ArcForge.ConsoleReport.ps1
-#    - Move console/TXT formatting helpers after catalog helpers are stable.
+#    - Planned, not extracted in v0.29. This release only marks the boundary
+#      and documents ownership so console/TXT output can be moved safely later.
 # 3. scripts/ArcForge.ReportParsing.ps1
 #    - Extract read-only transforms from report lines into section collections.
 # 4. scripts/ArcForge.Checks.*.ps1
@@ -149,7 +163,7 @@
 #      presentation-coupled and fragile.
 #
 # Future Index compatibility note:
-# - The Index is not implemented in v0.26.
+# - The Index is not implemented in v0.29.
 # - Future baseline verification will need clean access to collected endpoint
 #   evidence before it is rendered into TXT or HTML.
 # - Avoid making report rendering the only place where evidence meaning exists.
@@ -162,7 +176,7 @@
 # Future module owner: scripts/ArcForge.Runtime.ps1
 # Notes:
 # - Parameter ownership should remain close to runtime/orchestration setup until
-#   extraction is intentional. Do not add Index parameters in v0.26.
+#   extraction is intentional. Do not add Index parameters in v0.29.
 
 param (
     [ValidateSet("General", "Gaming", "Creator", "Developer", "Homelab", "Secure")]
@@ -202,6 +216,10 @@ $CheckCounts = @{
     FAIL = 0
 }
 
+# ReportLines is the in-memory TXT report buffer.
+# Console/TXT helpers append to this list during the run, then finalization writes
+# it to disk and passes it into the HTML renderer for read-only parsing.
+# Future module owner for buffer operations: scripts/ArcForge.ConsoleReport.ps1
 $script:ReportLines = [System.Collections.Generic.List[string]]::new()
 
 if (-not (Test-Path $ReportFolder)) {
@@ -215,6 +233,16 @@ if (-not (Test-Path $ReportFolder)) {
 # FUTURE MODULE BOUNDARY: these helpers can eventually move into a reporting
 # output module because they control console/TXT formatting and summary counts.
 # Keep them independent from HTML-specific logic so TXT output remains stable.
+#
+# Console/TXT ownership rules:
+# - Add-ReportLine owns appending raw TXT report lines.
+# - Write-Result owns standard [OK] / [WARN] / [FAIL] result formatting.
+# - Write-Section owns major console/TXT section headings.
+# - Write-Summary owns final summary totals based on $script:CheckCounts.
+# - Evidence collection should call these helpers instead of hand-formatting
+#   repeated result lines.
+# - Data-only helpers should return values and avoid Write-Host/Add-ReportLine
+#   side effects unless their purpose is explicitly report output.
 
 # Adds a line to the in-memory TXT report buffer.
 #
@@ -3935,6 +3963,11 @@ $RecommendedActionsHtml
 # 06. Run Header
 # =============================================================================
 # Future module owner: scripts/ArcForge.Runtime.ps1
+# Console/TXT boundary note:
+# - This region currently writes the visible run banner directly.
+# - Before extracting scripts/ArcForge.ConsoleReport.ps1, decide whether the
+#   banner should move with console/TXT output helpers or remain runtime-owned.
+# - Do not change the banner text or spacing during boundary-prep work.
 # Notes:
 # - This region starts the active run and writes initial identity metadata.
 # The execution path starts here. Everything above this point defines helpers;
@@ -4248,6 +4281,11 @@ else {
                     continue
                 }
 
+                # Console/TXT boundary note:
+                # Software Catalog category headings currently mirror Write-Section
+                # behavior without using Write-Section because these are nested
+                # category labels, not top-level report sections.
+                # Preserve this output exactly during future extraction.
                 Add-ReportLine
                 Add-ReportLine -Line "[$Category]"
                 Write-Host ""
@@ -4448,6 +4486,12 @@ catch {
 # 16. Report Finalization
 # =============================================================================
 # Future module owner: scripts/ArcForge.Runtime.ps1
+# Console/TXT boundary note:
+# - Write-Summary belongs to the future console/TXT report module.
+# - Final "report saved" console/TXT lines are still written here because this
+#   region owns final file paths and report emission.
+# - Before extraction, keep the visible completion messages and TXT lines
+#   byte-for-byte stable.
 # Notes:
 # - This region coordinates final summary, TXT output, and static HTML output.
 # - Keep generated reports as untracked artifacts.
