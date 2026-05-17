@@ -1,10 +1,28 @@
 ﻿# ArcForge First Response
-# ArcForge First Response Report v0.24
+# ArcForge First Response Report v0.25
+#
+# v0.25 maintainability pass notes:
+# - This file is still intentionally a single script for the pre-modularization stage.
+# - The section banners below are a map of the current monolith, not new behavior.
+# - Future modularization should use these boundaries as extraction candidates.
+# - Do not change console, TXT, HTML output, engine logic, or scoring as part of
+#   structure-only cleanup work.
+
+# =============================================================================
+# 00. Parameter Input
+# =============================================================================
 
 param (
     [ValidateSet("General", "Gaming", "Creator", "Developer", "Homelab", "Secure")]
     [string]$BattlestationProfile = "General"
 )
+
+# =============================================================================
+# 01. Runtime Setup and Report Paths
+# =============================================================================
+# These values are calculated once at startup and reused by the console output,
+# TXT report writer, and HTML report writer. Keep this area side-effect light:
+# it should prepare run metadata, not perform health checks.
 
 $ReportDate = Get-Date
 $ComputerName = $env:COMPUTERNAME
@@ -29,6 +47,13 @@ $script:ReportLines = [System.Collections.Generic.List[string]]::new()
 if (-not (Test-Path $ReportFolder)) {
     New-Item -Path $ReportFolder -ItemType Directory | Out-Null
 }
+
+# =============================================================================
+# 02. Console and TXT Report Output Helpers
+# =============================================================================
+# FUTURE MODULE BOUNDARY: these helpers can eventually move into a reporting
+# output module because they control console/TXT formatting and summary counts.
+# Keep them independent from HTML-specific logic so TXT output remains stable.
 
 # Adds a line to the in-memory TXT report buffer.
 #
@@ -162,6 +187,13 @@ function Write-Summary {
         Write-Result -Status "OK" -Label "Overall Status:" -Value "Healthy" -CountResult:$false
     }
 }
+
+# =============================================================================
+# 03. Software Catalog Detection Helpers
+# =============================================================================
+# FUTURE MODULE BOUNDARY: these helpers parse the ArcForge Software Catalog and
+# translate human-editable catalog rows into concrete detection checks. They are
+# used by the Software Readiness section only; avoid coupling them to HTML.
 
 # Determines whether a catalog software item appears to be installed.
 #
@@ -608,6 +640,12 @@ function Get-SoftwareDetectionConfig {
     }
 }
 
+# =============================================================================
+# 04. Report Line Parsing Helpers
+# =============================================================================
+# FUTURE MODULE BOUNDARY: HTML report generation starts from the same raw lines
+# used for TXT output. These parser helpers should remain read-only transforms;
+# they should not run checks, alter counters, or mutate report output.
 
 # Groups raw TXT report lines into known report sections.
 #
@@ -663,6 +701,20 @@ function Get-ArcForgeReportSections {
     return $Sections
 }
 
+# =============================================================================
+# 05. Static HTML Report Generation Pipeline
+# =============================================================================
+# FUTURE MODULE BOUNDARY: New-ArcForgeHtmlReport is currently the container for
+# static HTML rendering. It owns HTML helper functions, CSS, navigation, section
+# markup, and final file writing. Split this carefully later; do not mix it with
+# health-check collection logic.
+#
+# Guardrails for this area:
+# - No JavaScript.
+# - No CDN assets.
+# - No external fonts, icons, images, or dependencies.
+# - No changes to console output, TXT output, readiness scoring, or checks.
+
 # Generates the self-contained static HTML report.
 #
 # This function turns the raw report lines and summary counters into a polished
@@ -688,6 +740,12 @@ function New-ArcForgeHtmlReport {
         [hashtable]$CheckCounts,
         [string[]]$ReportLines
     )
+
+    # -------------------------------------------------------------------------
+    # 05.01 HTML Safety and Generic Rendering Helpers
+    # -------------------------------------------------------------------------
+    # These nested helpers are intentionally presentation-only. They convert
+    # already-captured report data into safe static HTML fragments.
 
     # Encodes text before placing it into HTML.
     #
@@ -778,6 +836,12 @@ function New-ArcForgeHtmlReport {
             }
         )
     }
+
+    # -------------------------------------------------------------------------
+    # 05.02 Readiness Overview Helpers
+    # -------------------------------------------------------------------------
+    # These helpers build the dashboard-style readiness cards from existing raw
+    # report lines. They do not rerun checks or change scoring rules.
 
     # Scores one report area for the Readiness Overview cards.
     #
@@ -912,6 +976,12 @@ $CardsHtml
 "@
     }
 
+    # -------------------------------------------------------------------------
+    # 05.03 Endpoint Summary Helper
+    # -------------------------------------------------------------------------
+    # This helper renders the top identity/status badge. It should stay focused
+    # on report metadata and final OK/WARN/FAIL counts.
+
     # Builds the compact v0.20 Endpoint Summary badge shown at the top of the
     # HTML report.
     #
@@ -1020,6 +1090,13 @@ $CardsHtml
 "@
     }
 
+
+    # -------------------------------------------------------------------------
+    # 05.04 Recommended Actions Helpers
+    # -------------------------------------------------------------------------
+    # These helpers translate existing WARN/FAIL findings into review guidance.
+    # They should not fix issues, run remediation, or alter the underlying check
+    # results.
 
     # Assigns one WARN/FAIL finding to the triage bucket shown in Recommended Actions.
     #
@@ -1443,6 +1520,13 @@ $GroupsHtml
         </section>
 "@
     }
+
+    # -------------------------------------------------------------------------
+    # 05.05 System Presentation Helpers
+    # -------------------------------------------------------------------------
+    # FUTURE MODULE BOUNDARY: this is the first major report section with custom
+    # presentation logic. When modularizing, extract System rendering separately
+    # from Network/Software/Security/Updates rendering.
 
     # Builds the v0.24 System evidence dashboard section.
     #
@@ -2033,6 +2117,12 @@ $ServiceDetailsHtml
 "@
     }
 
+    # -------------------------------------------------------------------------
+    # 05.06 Sidebar Navigation Helpers
+    # -------------------------------------------------------------------------
+    # These helpers build static anchor navigation only. Every href target must
+    # match an id in the final HTML template. No JavaScript is used.
+
     # Builds the three compact status segments shown beside readiness-domain
     # links in the HTML report sidebar.
     #
@@ -2220,6 +2310,12 @@ $NavigationLinksHtml
 "@
     }
 
+    # -------------------------------------------------------------------------
+    # 05.07 HTML Data Preparation
+    # -------------------------------------------------------------------------
+    # This section prepares the HTML-only view model from completed report lines.
+    # Keep it after all HTML helper definitions and before the final template.
+
     $ReportSections = Get-ArcForgeReportSections -ReportLines $ReportLines
 
     $SystemLines = @(
@@ -2325,6 +2421,12 @@ $NavigationLinksHtml
     $ReportNavigationHtml = New-ArcForgeReportNavigationHtml -ReadinessCards $ReadinessCards
 
     $RawFindings = ConvertTo-HtmlSafeText ($ReportLines -join "`r`n")
+
+    # -------------------------------------------------------------------------
+    # 05.08 Final Static HTML Template and CSS
+    # -------------------------------------------------------------------------
+    # The template below is intentionally self-contained. Keep CSS and markup
+    # local so generated reports remain portable, offline-first, and auditable.
 
     $Html = @"
 <!DOCTYPE html>
@@ -4081,6 +4183,13 @@ $RecommendedActionsHtml
     $Html | Out-File -FilePath $OutputPath -Encoding UTF8
 }
 
+# =============================================================================
+# 06. Run Header
+# =============================================================================
+# The execution path starts here. Everything above this point defines helpers;
+# everything below this point collects evidence, writes findings, and emits
+# reports.
+
 Write-Host "=========================" -ForegroundColor Gray
 Write-Host " ArcForge First Response" -ForegroundColor Gray
 Write-Host "=========================" -ForegroundColor Gray
@@ -4096,6 +4205,13 @@ Write-Result -Status "OK" -Label "Current User:" -Value $CurrentUser
 Write-Result -Status "OK" -Label "Report Date:" -Value $ReportDate
 Write-Result -Status "OK" -Label "Active Profile:" -Value $BattlestationProfile
 
+# =============================================================================
+# 07. Evidence Collection - System Identity
+# =============================================================================
+# Health-check sections below should remain straightforward evidence collection.
+# Each section writes console/TXT findings through Write-Result; the HTML report
+# later reuses those same captured lines instead of running separate checks.
+
 # System Checks
 Write-Section -Title "SYSTEM"
 
@@ -4109,6 +4225,10 @@ try {
 catch {
     Write-Result -Status "FAIL" -Label "System Info:" -Value $_.Exception.Message
 }
+
+# =============================================================================
+# 08. Evidence Collection - Uptime / Vital Signs
+# =============================================================================
 
 # Uptime Check
 Write-Section -Title "UPTIME"
@@ -4130,6 +4250,10 @@ try {
 catch {
     Write-Result -Status "FAIL" -Label "Uptime:" -Value $_.Exception.Message
 }
+
+# =============================================================================
+# 09. Evidence Collection - Process Health
+# =============================================================================
 
 # Process Readiness Checks
 Write-Section -Title "PROCESSES"
@@ -4166,6 +4290,10 @@ try {
 catch {
     Write-Result -Status "WARN" -Label "Memory Usage:" -Value "Unable to query top memory processes"
 }
+
+# =============================================================================
+# 10. Evidence Collection - Core Services
+# =============================================================================
 
 # Service Readiness Checks
 Write-Section -Title "SERVICES"
@@ -4214,6 +4342,10 @@ foreach ($Service in $CoreServices) {
     }
 }
 
+# =============================================================================
+# 11. Evidence Collection - Storage
+# =============================================================================
+
 # Storage Check
 Write-Section -Title "STORAGE"
 
@@ -4239,6 +4371,10 @@ try {
 catch {
     Write-Result -Status "FAIL" -Label "Storage:" -Value $_.Exception.Message
 }
+
+# =============================================================================
+# 12. Evidence Collection - Network
+# =============================================================================
 
 # Network Checks
 Write-Section -Title "NETWORK"
@@ -4289,6 +4425,10 @@ try {
 catch {
     Write-Result -Status "FAIL" -Label "DNS Resolution:" -Value "Failed to resolve github.com"
 }
+
+# =============================================================================
+# 13. Evidence Collection - Software Readiness
+# =============================================================================
 
 # Software Checks
 Write-Section -Title "SOFTWARE"
@@ -4365,6 +4505,10 @@ else {
     }
 }
 
+# =============================================================================
+# 14. Evidence Collection - Security Posture
+# =============================================================================
+
 # Security Checks
 Write-Section -Title "SECURITY"
 
@@ -4428,6 +4572,10 @@ try {
 catch {
     Write-Result -Status "WARN" -Label "Local Admins:" -Value "Unable to query local administrators"
 }
+
+# =============================================================================
+# 15. Evidence Collection - Windows Update Readiness
+# =============================================================================
 
 # Windows Update Checks
 Write-Section -Title "UPDATES"
@@ -4514,6 +4662,12 @@ try {
 catch {
     Write-Result -Status "WARN" -Label "Last Hotfix:" -Value "Unable to query hotfix history"
 }
+
+# =============================================================================
+# 16. Report Finalization
+# =============================================================================
+# Finalization writes the accumulated TXT buffer and then renders the static HTML
+# report from the same data. Generated reports should remain untracked artifacts.
 
 Write-Summary
 
