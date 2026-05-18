@@ -1,5 +1,19 @@
 ﻿# ArcForge First Response
-# ArcForge First Response Report v0.31
+# ArcForge First Response Report v0.32
+#
+# v0.32 HTML report boundary prep notes:
+# - v0.32 documents the static HTML rendering layer that sits after
+#   report parsing and HTML-only view model preparation.
+# - scripts/ArcForge.HtmlReport.ps1 is planned only; no HTML code is
+#   extracted in this release.
+# - HTML rendering should own presentation, markup, embedded CSS, status
+#   visuals, navigation, report sections, and final static document assembly.
+# - HTML rendering should consume already-prepared report data. It should not
+#   collect endpoint evidence, run checks, change scoring, mutate report lines,
+#   write console/TXT output, own Software Catalog detection, or own future
+#   Index baseline verification logic.
+# - No console strings, TXT strings, scoring, detection logic, parsing behavior,
+#   HTML, CSS, or report behavior changes are intended.
 #
 # v0.31 report parsing boundary prep notes:
 # - v0.31 documents the read-only parsing layer that sits between
@@ -116,10 +130,16 @@
 #   - Should not write console/TXT output or own HTML/CSS presentation.
 #
 # - scripts/ArcForge.HtmlReport.ps1
-#   - New-ArcForgeHtmlReport.
-#   - Shared HTML safety helpers.
-#   - Shared HTML section rendering.
-#   - Final static HTML template pipeline.
+#   - Planned; not extracted in v0.32.
+#   - Future owner for New-ArcForgeHtmlReport.
+#   - Future owner for shared HTML safety helpers.
+#   - Future owner for status badge/severity visual rendering.
+#   - Future owner for summary, Recommended Actions, Raw Findings, and final
+#     static HTML document assembly.
+#   - Future owner for embedded CSS and dependency-free static report markup.
+#   - Should consume parsed/view-model report data. It should not collect
+#     evidence, run checks, mutate $ReportLines, write console/TXT output, change
+#     scoring, own Software Catalog detection, or own future Index verification.
 #
 # - scripts/ArcForge.Html.System.ps1
 #   - System-specific HTML rendering helpers.
@@ -183,6 +203,7 @@
 #    - Extract System-specific cards/details after navigation boundaries are
 #      verified.
 # 7. scripts/ArcForge.HtmlReport.ps1
+#    - Planned; not extracted in v0.32.
 #    - Save the full HTML template pipeline for last because it is the most
 #      presentation-coupled and fragile.
 #
@@ -200,7 +221,7 @@
 # Future module owner: scripts/ArcForge.Runtime.ps1
 # Notes:
 # - Parameter ownership should remain close to runtime/orchestration setup until
-#   extraction is intentional. Do not add Index parameters in v0.31.
+#   extraction is intentional. Do not add Index or BootType parameters in v0.32.
 
 param (
     [ValidateSet("General", "Gaming", "Creator", "Developer", "Homelab", "Secure")]
@@ -359,21 +380,44 @@ function Get-ArcForgeReportSections {
 # =============================================================================
 # Future module owner: scripts/ArcForge.HtmlReport.ps1
 # FUTURE MODULE BOUNDARY: New-ArcForgeHtmlReport is currently the container for
-# static HTML rendering. It owns HTML helper functions, CSS, navigation, section
-# markup, and final file writing. Split this carefully later; do not mix it with
+# static HTML rendering. This area decides how already-prepared report data looks
+# in the local HTML report. Split this carefully later; do not mix it with
 # health-check collection logic.
+#
+# HTML rendering ownership notes:
+# - HTML escaping / encoding helpers.
+# - Status badge and severity visual treatment.
+# - Report Navigation markup.
+# - Summary/readiness markup.
+# - Recommended Actions markup.
+# - Raw Findings markup.
+# - System Overview and System detail card markup.
+# - Software Readiness grouping/card markup.
+# - Collapsible/details markup.
+# - Embedded CSS.
+# - Final self-contained static HTML document assembly.
+#
+# HTML rendering should not:
+# - Collect endpoint evidence.
+# - Run checks.
+# - Change readiness scoring.
+# - Mutate $ReportLines.
+# - Write console/TXT output.
+# - Own Software Catalog detection logic.
+# - Own future Index baseline verification logic.
 #
 # Guardrails for this area:
 # - No JavaScript.
 # - No CDN assets.
 # - No external fonts, icons, images, or dependencies.
-# - No changes to console output, TXT output, readiness scoring, or checks.
+# - No changes to console output, TXT output, readiness scoring, parsing, or checks.
 
 # Generates the self-contained static HTML report.
 #
-# This function turns the raw report lines and summary counters into a polished
-# local HTML file. It does not use JavaScript, external CSS, or external assets.
-# The HTML acts as a future GUI prototype while keeping ArcForge simple and local.
+# This function turns the raw report lines, parsed/view-model data, and summary
+# counters into a polished local HTML file. It does not use JavaScript, external
+# CSS, or external assets. The HTML acts as a future GUI prototype while keeping
+# ArcForge simple and local.
 #
 # Input:
 # - OutputPath: Destination .html file path.
@@ -4407,6 +4451,9 @@ catch {
 # - Keep generated reports as untracked artifacts.
 # Finalization writes the accumulated TXT buffer and then renders the static HTML
 # report from the same data. Generated reports should remain untracked artifacts.
+# HTML boundary note:
+# - New-ArcForgeHtmlReport owns static HTML assembly for now. This finalization
+#   region should only call it with completed run data and the destination path.
 
 Write-Summary
 
