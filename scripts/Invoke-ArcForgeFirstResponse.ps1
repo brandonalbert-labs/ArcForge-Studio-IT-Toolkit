@@ -1,5 +1,13 @@
 # ArcForge First Response
-# ArcForge First Response Report v0.36
+# ArcForge First Response Report v0.37
+#
+# v0.37 HTML status helper extraction notes:
+# - v0.37 extracts the next small HTML presentation helpers into
+#   scripts/ArcForge.HtmlReport.ps1.
+# - New-StatusClass and New-StatusBadgeHtml now live in the HTML helper module.
+# - New-ArcForgeHtmlReport remains in the main script in this release.
+# - No HTML layout, CSS, console strings, TXT strings, scoring, detection logic,
+#   parsing behavior, or report behavior changes are intended.
 #
 # v0.36 HTML safety helper extraction notes:
 # - v0.36 creates scripts/ArcForge.HtmlReport.ps1 as the first active HTML
@@ -172,9 +180,11 @@
 # - scripts/ArcForge.HtmlReport.ps1
 #   - Created in v0.36.
 #   - Owns ConvertTo-HtmlSafeText.
+#   - Owns New-StatusClass.
+#   - Owns New-StatusBadgeHtml.
 #   - Future owner for New-ArcForgeHtmlReport.
 #   - Future owner for shared HTML safety helpers.
-#   - Future owner for status badge/severity visual rendering.
+#   - Future owner for additional status badge/severity visual rendering.
 #   - Future owner for summary, Recommended Actions, Raw Findings, and final
 #     static HTML document assembly.
 #   - Future owner for embedded CSS and dependency-free static report markup.
@@ -485,8 +495,9 @@ function New-ArcForgeHtmlReport {
     # -------------------------------------------------------------------------
     # 05.01 HTML Safety and Generic Rendering Helpers
     # -------------------------------------------------------------------------
-    # v0.36 note:
-    # - ConvertTo-HtmlSafeText now lives in scripts/ArcForge.HtmlReport.ps1.
+    # v0.37 note:
+    # - ConvertTo-HtmlSafeText, New-StatusClass, and New-StatusBadgeHtml now live
+    #   in scripts/ArcForge.HtmlReport.ps1.
     # - The remaining nested helpers stay here until later staged extractions.
     # - These helpers are intentionally presentation-only. They convert
     #   already-captured report data into safe static HTML fragments.
@@ -766,7 +777,10 @@ $CardsHtml
         $SafeCurrentUser = ConvertTo-HtmlSafeText $CurrentUser
         $SafeBattlestationProfile = ConvertTo-HtmlSafeText $BattlestationProfile
         $SafeGeneratedAt = ConvertTo-HtmlSafeText $GeneratedAt
-        $SafeOverallStatus = ConvertTo-HtmlSafeText $OverallStatus
+        $StatusBadgeHtml = New-StatusBadgeHtml `
+            -Status $OverallStatus `
+            -StatusClass $StatusClass `
+            -BadgeClass "endpoint-status-pill"
 
         return @"
         <section class="endpoint-summary card" aria-label="Endpoint Summary">
@@ -775,7 +789,7 @@ $CardsHtml
                     <div class="endpoint-kicker">Endpoint Summary</div>
                     <div class="endpoint-title-row">
                         <h2>$SafeComputerName</h2>
-                        <span class="endpoint-status-pill $StatusClass">$SafeOverallStatus</span>
+                        $StatusBadgeHtml
                     </div>
                     <p class="endpoint-description">Static local triage snapshot for this workstation.</p>
 
@@ -1357,12 +1371,7 @@ $GroupsHtml
             )
 
             $Status = if ($Record.Status) { [string]$Record.Status } else { "UNKNOWN" }
-            $StatusClass = switch ($Status) {
-                "OK"      { "system-status-ok" }
-                "WARN"    { "system-status-warn" }
-                "FAIL"    { "system-status-fail" }
-                default   { "system-status-unknown" }
-            }
+            $StatusClass = New-StatusClass -Status $Status -ClassPrefix "system-status"
 
             $Label = if ([string]::IsNullOrWhiteSpace($DisplayLabel)) { $Record.Label } else { $DisplayLabel }
             $SafeStatus = ConvertTo-HtmlSafeText $Status
@@ -1391,12 +1400,7 @@ $GroupsHtml
             )
 
             $Status = if ($Record.Status) { [string]$Record.Status } else { "UNKNOWN" }
-            $StatusClass = switch ($Status) {
-                "OK"      { "system-status-ok" }
-                "WARN"    { "system-status-warn" }
-                "FAIL"    { "system-status-fail" }
-                default   { "system-status-unknown" }
-            }
+            $StatusClass = New-StatusClass -Status $Status -ClassPrefix "system-status"
 
             $Label = if ([string]::IsNullOrWhiteSpace($DisplayLabel)) { $Record.Label } else { $DisplayLabel }
             $SafeStatus = ConvertTo-HtmlSafeText $Status
@@ -1796,12 +1800,7 @@ $TopMemoryRowsHtml
         foreach ($Label in $ServiceLabels) {
             $Record = Get-ArcForgeSystemEvidenceRecord -Lines $ServiceLines -Label $Label
             $Status = if ($Record.Status) { [string]$Record.Status } else { "UNKNOWN" }
-            $StatusClass = switch ($Status) {
-                "OK"      { "system-service-ok" }
-                "WARN"    { "system-service-warn" }
-                "FAIL"    { "system-service-fail" }
-                default   { "system-service-unknown" }
-            }
+            $StatusClass = New-StatusClass -Status $Status -ClassPrefix "system-service"
             $SafeStatus = ConvertTo-HtmlSafeText $Status
             $SafeLabel = ConvertTo-HtmlSafeText (($Record.Label -replace ':$', '').Trim())
             $SafeValue = ConvertTo-HtmlSafeText $Record.Value
@@ -2140,16 +2139,15 @@ $NavigationLinksHtml
 
     if ($FailCount -gt 0) {
         $OverallStatus = "Action Required"
-        $StatusClass = "status-fail"
     }
     elseif ($WarnCount -gt 0) {
         $OverallStatus = "Attention Recommended"
-        $StatusClass = "status-warn"
     }
     else {
         $OverallStatus = "Healthy"
-        $StatusClass = "status-ok"
     }
+
+    $StatusClass = New-StatusClass -Status $OverallStatus -ClassPrefix "status"
 
     # Build the v0.20 Endpoint Summary badge.
     #
