@@ -1,5 +1,14 @@
-﻿# ArcForge First Response
-# ArcForge First Response Report v0.35
+# ArcForge First Response
+# ArcForge First Response Report v0.36
+#
+# v0.36 HTML safety helper extraction notes:
+# - v0.36 creates scripts/ArcForge.HtmlReport.ps1 as the first active HTML
+#   report helper module.
+# - This pass extracts only the smallest HTML safety helper first:
+#   ConvertTo-HtmlSafeText.
+# - New-ArcForgeHtmlReport remains in the main script in this release.
+# - No HTML layout, CSS, console strings, TXT strings, scoring, detection logic,
+#   parsing behavior, or report behavior changes are intended.
 #
 # v0.35 HTML renderer slice prep notes:
 # - v0.35 keeps New-ArcForgeHtmlReport in the main script.
@@ -161,7 +170,8 @@
 #     run endpoint checks, or own HTML/CSS presentation.
 #
 # - scripts/ArcForge.HtmlReport.ps1
-#   - Planned; not extracted in v0.35.
+#   - Created in v0.36.
+#   - Owns ConvertTo-HtmlSafeText.
 #   - Future owner for New-ArcForgeHtmlReport.
 #   - Future owner for shared HTML safety helpers.
 #   - Future owner for status badge/severity visual rendering.
@@ -239,8 +249,8 @@
 #    - Extracted in v0.34. Keep this module focused on read-only transforms
 #      from report lines into section collections and HTML-ready report data.
 # 4. scripts/ArcForge.HtmlReport.ps1
-#    - Planned; not extracted in v0.35.
-#    - v0.36 candidate: extract the safest HTML safety/status helpers first.
+#    - Created in v0.36.
+#    - v0.36 extracts ConvertTo-HtmlSafeText as the first safe helper.
 #    - v0.37 candidate: extract Raw Findings and Recommended Actions helpers.
 #    - v0.38 candidate: extract System HTML helpers.
 #    - v0.39 candidate: extract Software Readiness HTML helpers.
@@ -251,7 +261,7 @@
 #    - Move evidence collection by domain only after helper ownership is clear.
 #
 # Future Index compatibility note:
-# - The Index is not implemented in v0.35.
+# - The Index is not implemented in v0.36.
 # - Future baseline verification will need clean access to collected endpoint
 #   evidence before it is rendered into TXT or HTML.
 # - Avoid making report rendering the only place where evidence meaning exists.
@@ -264,7 +274,7 @@
 # Future module owner: scripts/ArcForge.Runtime.ps1
 # Notes:
 # - Parameter ownership should remain close to runtime/orchestration setup until
-#   extraction is intentional. Do not add Index or BootType parameters in v0.35.
+#   extraction is intentional. Do not add Index or BootType parameters in v0.36.
 
 param (
     [ValidateSet("General", "Gaming", "Creator", "Developer", "Homelab", "Secure")]
@@ -285,6 +295,11 @@ param (
 # These helpers interpret completed report lines for HTML generation without
 # changing console/TXT output, scoring, checks, or presentation styling.
 . "$PSScriptRoot\ArcForge.ReportParsing.ps1"
+
+# Load static HTML report helper functions.
+# These helpers support HTML rendering only. They should not collect evidence,
+# run checks, change scoring, or write console/TXT output.
+. "$PSScriptRoot\ArcForge.HtmlReport.ps1"
 
 # =============================================================================
 # 01. Runtime Setup and Report Paths
@@ -470,22 +485,11 @@ function New-ArcForgeHtmlReport {
     # -------------------------------------------------------------------------
     # 05.01 HTML Safety and Generic Rendering Helpers
     # -------------------------------------------------------------------------
-    # v0.35 future slice: HTML safety, status badges, and generic rendering helpers.
-    # These nested helpers are intentionally presentation-only. They convert
-    # already-captured report data into safe static HTML fragments.
-
-    # Encodes text before placing it into HTML.
-    #
-    # This prevents report values containing characters like <, >, or & from
-    # breaking the HTML structure or being interpreted as markup.
-    # Future module owner: scripts/ArcForge.HtmlReport.ps1
-    function ConvertTo-HtmlSafeText {
-        param (
-            [string]$Text
-        )
-
-        return [System.Net.WebUtility]::HtmlEncode($Text)
-    }
+    # v0.36 note:
+    # - ConvertTo-HtmlSafeText now lives in scripts/ArcForge.HtmlReport.ps1.
+    # - The remaining nested helpers stay here until later staged extractions.
+    # - These helpers are intentionally presentation-only. They convert
+    #   already-captured report data into safe static HTML fragments.
 
     # Converts raw finding lines into an HTML <li> list.
     #
