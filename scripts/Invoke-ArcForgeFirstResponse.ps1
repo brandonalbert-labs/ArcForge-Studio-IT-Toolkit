@@ -1,5 +1,16 @@
 ﻿# ArcForge First Response
-# ArcForge First Response Report v0.33
+# ArcForge First Response Report v0.34
+#
+# v0.34 report parsing module extraction notes:
+# - v0.34 extracts the read-only report parsing helper into
+#   scripts/ArcForge.ReportParsing.ps1.
+# - This keeps the main script focused on orchestration while preserving the
+#   existing console/TXT-to-HTML report pipeline.
+# - Parsing should continue to interpret completed report lines only. It should
+#   not write console/TXT output, mutate report lines, change scoring, run
+#   endpoint checks, or own HTML/CSS presentation.
+# - No console strings, TXT strings, scoring, detection logic, HTML, CSS, or
+#   report behavior changes are intended.
 #
 # v0.33 HTML report extraction prep notes:
 # - v0.33 documents the internal structure of New-ArcForgeHtmlReport before any
@@ -133,14 +144,15 @@
 #   - Get-SoftwareDetectionConfig.
 #
 # - scripts/ArcForge.ReportParsing.ps1
-#   - Planned; not extracted in v0.31.
-#   - Future owner for Get-ArcForgeReportSections.
-#   - Future owner for read-only transforms from raw report lines into section
-#     collections and HTML-ready report data.
-#   - Should not write console/TXT output or own HTML/CSS presentation.
+#   - Extracted in v0.34.
+#   - Owns Get-ArcForgeReportSections.
+#   - Owns read-only transforms from raw report lines into section collections
+#     and HTML-ready report data.
+#   - Should not write console/TXT output, mutate report lines, change scoring,
+#     run endpoint checks, or own HTML/CSS presentation.
 #
 # - scripts/ArcForge.HtmlReport.ps1
-#   - Planned; not extracted in v0.33.
+#   - Planned; not extracted in v0.34.
 #   - Future owner for New-ArcForgeHtmlReport.
 #   - Future owner for shared HTML safety helpers.
 #   - Future owner for status badge/severity visual rendering.
@@ -202,9 +214,8 @@
 #    - Extracted in v0.30. Keep this module focused on console/TXT helper
 #      functions only for now.
 # 3. scripts/ArcForge.ReportParsing.ps1
-#    - Planned; not extracted in v0.31.
-#    - Later, extract read-only transforms from report lines into section
-#      collections and HTML-ready report data.
+#    - Extracted in v0.34. Keep this module focused on read-only transforms
+#      from report lines into section collections and HTML-ready report data.
 # 4. scripts/ArcForge.Checks.*.ps1
 #    - Move evidence collection by domain only after helper ownership is clear.
 # 5. scripts/ArcForge.Html.Navigation.ps1
@@ -213,12 +224,12 @@
 #    - Extract System-specific cards/details after navigation boundaries are
 #      verified.
 # 7. scripts/ArcForge.HtmlReport.ps1
-#    - Planned; not extracted in v0.33.
+#    - Planned; not extracted in v0.34.
 #    - Save the full HTML template pipeline for last because it is the most
 #      presentation-coupled and fragile.
 #
 # Future Index compatibility note:
-# - The Index is not implemented in v0.33.
+# - The Index is not implemented in v0.34.
 # - Future baseline verification will need clean access to collected endpoint
 #   evidence before it is rendered into TXT or HTML.
 # - Avoid making report rendering the only place where evidence meaning exists.
@@ -231,7 +242,7 @@
 # Future module owner: scripts/ArcForge.Runtime.ps1
 # Notes:
 # - Parameter ownership should remain close to runtime/orchestration setup until
-#   extraction is intentional. Do not add Index or BootType parameters in v0.32.
+#   extraction is intentional. Do not add Index or BootType parameters in v0.34.
 
 param (
     [ValidateSet("General", "Gaming", "Creator", "Developer", "Homelab", "Secure")]
@@ -247,6 +258,11 @@ param (
 # Dot-sourcing keeps these shared output helpers available to the main script
 # without changing the visible console or TXT report behavior.
 . "$PSScriptRoot\ArcForge.ConsoleReport.ps1"
+
+# Load report parsing helper functions.
+# These helpers interpret completed report lines for HTML generation without
+# changing console/TXT output, scoring, checks, or presentation styling.
+. "$PSScriptRoot\ArcForge.ReportParsing.ps1"
 
 # =============================================================================
 # 01. Runtime Setup and Report Paths
@@ -309,81 +325,15 @@ if (-not (Test-Path $ReportFolder)) {
 # =============================================================================
 # 04. Report Line Parsing Helpers
 # =============================================================================
-# Future module owner: scripts/ArcForge.ReportParsing.ps1
-# FUTURE MODULE BOUNDARY: HTML report generation starts from the same raw lines
-# used for TXT output. These parser helpers should remain read-only transforms;
-# they should not run checks, write console/TXT output, alter counters, mutate
-# report lines, or own HTML/CSS presentation.
+# Report parsing helper functions now live in:
+# scripts/ArcForge.ReportParsing.ps1
 #
-# Report parsing contract:
-# - Input: completed $ReportLines from the console/TXT reporting path.
-# - Work: identify known bracketed headings such as [SYSTEM], [NETWORK],
-#   [SOFTWARE], [SECURITY], [UPDATES], and [SUMMARY].
-# - Output: structured collections that HTML rendering can consume for
-#   navigation, raw findings, overview cards, detail cards, and summary areas.
-# - Important: parsing explains the report lines; rendering decides how they look.
-
-# Groups raw TXT report lines into known report sections.
+# The main script dot-sources that module near the top of this file. In plain
+# terms, that means PowerShell reads the helper file first so New-ArcForgeHtmlReport
+# can use the parser without keeping that helper in the main script.
 #
-# The HTML report does not run checks again. Instead, it reads the lines already
-# captured in $ReportLines and sorts them under major section names. Only known
-# sections are captured so accidental bracketed lines do not create random cards.
-#
-# Boundary note:
-# - This is interpretation logic, not presentation logic.
-# - It knows the canonical section headings and section ordering used by the
-#   report pipeline.
-# - It should stay independent from CSS, card markup, sidebar markup, and final
-#   file writing.
-#
-# Input:
-# - ReportLines: The full collected report output.
-# Output:
-# - Hashtable where each known section name maps to a list of lines.
-# Future module owner: scripts/ArcForge.ReportParsing.ps1
-function Get-ArcForgeReportSections {
-    param (
-        [string[]]$ReportLines
-    )
-
-    $KnownSections = @(
-        "SYSTEM",
-        "UPTIME",
-        "PROCESSES",
-        "SERVICES",
-        "STORAGE",
-        "NETWORK",
-        "SOFTWARE",
-        "SECURITY",
-        "UPDATES",
-        "SUMMARY"
-    )
-
-    $Sections = @{}
-
-    foreach ($Section in $KnownSections) {
-        $Sections[$Section] = [System.Collections.Generic.List[string]]::new()
-    }
-
-    $CurrentSection = $null
-
-    foreach ($Line in $ReportLines) {
-        if ($Line -match '^\[(?<Section>[^\]]+)\]\s*$') {
-            $CandidateSection = $Matches.Section.Trim().ToUpperInvariant()
-
-            if ($KnownSections -contains $CandidateSection) {
-                $CurrentSection = $CandidateSection
-                continue
-            }
-        }
-
-        if ($CurrentSection -and -not [string]::IsNullOrWhiteSpace($Line)) {
-            $Sections[$CurrentSection].Add($Line) | Out-Null
-        }
-    }
-
-    return $Sections
-}
+# Parsing remains a read-only interpretation layer between completed console/TXT
+# report lines and the static HTML report renderer.
 
 # =============================================================================
 # 05. Static HTML Report Generation Pipeline
@@ -456,7 +406,7 @@ function Get-ArcForgeReportSections {
 #   - File write to the requested OutputPath.
 #
 # Extraction note:
-# - Keep these regions intact for v0.33. Later releases can move one renderer
+# - Keep these regions intact for v0.34. Later releases can move one renderer
 #   region at a time after confirming report behavior stays identical.
 
 # Generates the self-contained static HTML report.
