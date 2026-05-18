@@ -1,5 +1,14 @@
 ﻿# ArcForge First Response
-# ArcForge First Response Report v0.34
+# ArcForge First Response Report v0.35
+#
+# v0.35 HTML renderer slice prep notes:
+# - v0.35 keeps New-ArcForgeHtmlReport in the main script.
+# - No HTML renderer code is extracted in this release.
+# - This pass maps New-ArcForgeHtmlReport into safe future extraction slices.
+# - scripts/ArcForge.HtmlReport.ps1 is still planned only.
+# - Intended change type: annotation-only / boundary-prep only.
+# - No console strings, TXT strings, scoring, detection logic, parsing behavior,
+#   HTML, CSS, or report behavior changes are intended.
 #
 # v0.34 report parsing module extraction notes:
 # - v0.34 extracts the read-only report parsing helper into
@@ -152,13 +161,26 @@
 #     run endpoint checks, or own HTML/CSS presentation.
 #
 # - scripts/ArcForge.HtmlReport.ps1
-#   - Planned; not extracted in v0.34.
+#   - Planned; not extracted in v0.35.
 #   - Future owner for New-ArcForgeHtmlReport.
 #   - Future owner for shared HTML safety helpers.
 #   - Future owner for status badge/severity visual rendering.
 #   - Future owner for summary, Recommended Actions, Raw Findings, and final
 #     static HTML document assembly.
 #   - Future owner for embedded CSS and dependency-free static report markup.
+#   - v0.35 staged extraction slice map:
+#     1. HTML safety / escaping helpers.
+#     2. Status badge / severity visual helpers.
+#     3. Flattened finding helpers.
+#     4. Readiness and top-summary helpers.
+#     5. Recommended Actions helpers.
+#     6. Raw Findings helpers.
+#     7. System HTML helpers.
+#     8. Software Readiness HTML helpers.
+#     9. Report Navigation helpers.
+#     10. Embedded CSS block.
+#     11. Static HTML template assembly.
+#     12. File write / output path handling.
 #   - Should consume parsed/view-model report data. It should not collect
 #     evidence, run checks, mutate $ReportLines, write console/TXT output, change
 #     scoring, own Software Catalog detection, or own future Index verification.
@@ -216,20 +238,20 @@
 # 3. scripts/ArcForge.ReportParsing.ps1
 #    - Extracted in v0.34. Keep this module focused on read-only transforms
 #      from report lines into section collections and HTML-ready report data.
-# 4. scripts/ArcForge.Checks.*.ps1
+# 4. scripts/ArcForge.HtmlReport.ps1
+#    - Planned; not extracted in v0.35.
+#    - v0.36 candidate: extract the safest HTML safety/status helpers first.
+#    - v0.37 candidate: extract Raw Findings and Recommended Actions helpers.
+#    - v0.38 candidate: extract System HTML helpers.
+#    - v0.39 candidate: extract Software Readiness HTML helpers.
+#    - v0.40 candidate: move the remaining final HTML renderer into the module.
+#    - Keep the full HTML template pipeline late because it is presentation-
+#      coupled and fragile.
+# 5. scripts/ArcForge.Checks.*.ps1
 #    - Move evidence collection by domain only after helper ownership is clear.
-# 5. scripts/ArcForge.Html.Navigation.ps1
-#    - Extract sidebar/navigation helpers before the full HTML template.
-# 6. scripts/ArcForge.Html.System.ps1
-#    - Extract System-specific cards/details after navigation boundaries are
-#      verified.
-# 7. scripts/ArcForge.HtmlReport.ps1
-#    - Planned; not extracted in v0.34.
-#    - Save the full HTML template pipeline for last because it is the most
-#      presentation-coupled and fragile.
 #
 # Future Index compatibility note:
-# - The Index is not implemented in v0.34.
+# - The Index is not implemented in v0.35.
 # - Future baseline verification will need clean access to collected endpoint
 #   evidence before it is rendered into TXT or HTML.
 # - Avoid making report rendering the only place where evidence meaning exists.
@@ -242,7 +264,7 @@
 # Future module owner: scripts/ArcForge.Runtime.ps1
 # Notes:
 # - Parameter ownership should remain close to runtime/orchestration setup until
-#   extraction is intentional. Do not add Index or BootType parameters in v0.34.
+#   extraction is intentional. Do not add Index or BootType parameters in v0.35.
 
 param (
     [ValidateSet("General", "Gaming", "Creator", "Developer", "Homelab", "Secure")]
@@ -406,8 +428,16 @@ if (-not (Test-Path $ReportFolder)) {
 #   - File write to the requested OutputPath.
 #
 # Extraction note:
-# - Keep these regions intact for v0.34. Later releases can move one renderer
+# - Keep these regions intact for v0.35. Later releases can move one renderer
 #   region at a time after confirming report behavior stays identical.
+#
+# v0.35 safe future extraction order:
+# 1. Move HTML safety and small status/severity helpers first.
+# 2. Move Raw Findings and Recommended Actions helpers after that foundation is stable.
+# 3. Move System-specific HTML helpers as their own tested slice.
+# 4. Move Software Readiness HTML helpers separately from System rendering.
+# 5. Move navigation helpers after section ids and anchors are verified.
+# 6. Move final template assembly, embedded CSS, and file output last.
 
 # Generates the self-contained static HTML report.
 #
@@ -440,6 +470,7 @@ function New-ArcForgeHtmlReport {
     # -------------------------------------------------------------------------
     # 05.01 HTML Safety and Generic Rendering Helpers
     # -------------------------------------------------------------------------
+    # v0.35 future slice: HTML safety, status badges, and generic rendering helpers.
     # These nested helpers are intentionally presentation-only. They convert
     # already-captured report data into safe static HTML fragments.
 
@@ -539,6 +570,7 @@ function New-ArcForgeHtmlReport {
     # -------------------------------------------------------------------------
     # 05.02 Readiness Overview Helpers
     # -------------------------------------------------------------------------
+    # v0.35 future slice: readiness and top-summary helpers.
     # These helpers build the dashboard-style readiness cards from existing raw
     # report lines. They do not rerun checks or change scoring rules.
 
@@ -796,6 +828,7 @@ $CardsHtml
     # -------------------------------------------------------------------------
     # 05.04 Recommended Actions Helpers
     # -------------------------------------------------------------------------
+    # v0.35 future slice: Recommended Actions helpers.
     # These helpers translate existing WARN/FAIL findings into review guidance.
     # They should not fix issues, run remediation, or alter the underlying check
     # results.
@@ -1230,6 +1263,7 @@ $GroupsHtml
     # -------------------------------------------------------------------------
     # 05.05 System Presentation Helpers
     # -------------------------------------------------------------------------
+    # v0.35 future slice: System overview and System detail HTML helpers.
     # FUTURE MODULE BOUNDARY: this is the first major report section with custom
     # presentation logic. When modularizing, extract System rendering separately
     # from Network/Software/Security/Updates rendering.
@@ -1835,6 +1869,7 @@ $ServiceDetailsHtml
     # -------------------------------------------------------------------------
     # 05.06 Sidebar Navigation Helpers
     # -------------------------------------------------------------------------
+    # v0.35 future slice: Report Navigation helpers.
     # These helpers build static anchor navigation only. Every href target must
     # match an id in the final HTML template. No JavaScript is used.
 
@@ -2030,6 +2065,7 @@ $NavigationLinksHtml
     # -------------------------------------------------------------------------
     # 05.07 HTML Data Preparation
     # -------------------------------------------------------------------------
+    # v0.35 future slices: Raw Findings and Software Readiness HTML preparation.
     # This section prepares the HTML-only view model from completed report lines.
     # Keep it after all HTML helper definitions and before the final template.
     #
@@ -2151,6 +2187,7 @@ $NavigationLinksHtml
     # -------------------------------------------------------------------------
     # 05.08 Final Static HTML Template and CSS
     # -------------------------------------------------------------------------
+    # v0.35 future slices: embedded CSS, final template assembly, and file output.
     # The template below is intentionally self-contained. Keep CSS and markup
     # local so generated reports remain portable, offline-first, and auditable.
 
