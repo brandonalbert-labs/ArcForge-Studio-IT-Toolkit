@@ -1,5 +1,13 @@
 # ArcForge First Response
-# ArcForge First Response Report v0.37
+# ArcForge First Response Report v0.38
+#
+# v0.38 HTML finding list helper extraction notes:
+# - v0.38 extracts the next small HTML presentation helper into
+#   scripts/ArcForge.HtmlReport.ps1.
+# - ConvertTo-ArcForgeHtmlFindingList now lives in the HTML helper module.
+# - New-ArcForgeHtmlReport remains in the main script in this release.
+# - No HTML layout, CSS, console strings, TXT strings, scoring, detection logic,
+#   parsing behavior, or report behavior changes are intended.
 #
 # v0.37 HTML status helper extraction notes:
 # - v0.37 extracts the next small HTML presentation helpers into
@@ -495,62 +503,13 @@ function New-ArcForgeHtmlReport {
     # -------------------------------------------------------------------------
     # 05.01 HTML Safety and Generic Rendering Helpers
     # -------------------------------------------------------------------------
-    # v0.37 note:
-    # - ConvertTo-HtmlSafeText, New-StatusClass, and New-StatusBadgeHtml now live
-    #   in scripts/ArcForge.HtmlReport.ps1.
+    # v0.38 note:
+    # - ConvertTo-HtmlSafeText, New-StatusClass, New-StatusBadgeHtml, and
+    #   ConvertTo-ArcForgeHtmlFindingList now live in
+    #   scripts/ArcForge.HtmlReport.ps1.
     # - The remaining nested helpers stay here until later staged extractions.
     # - These helpers are intentionally presentation-only. They convert
     #   already-captured report data into safe static HTML fragments.
-
-    # Converts raw finding lines into an HTML <li> list.
-    #
-    # Some section line collections can be nested arrays, especially when multiple
-    # report sections are combined into one HTML card. This helper flattens them,
-    # removes blanks, HTML-encodes every line, and wraps each finding in <code>.
-    #
-    # Output:
-    # - A string containing one or more <li> elements.
-    # - A muted placeholder <li> when the section has no findings.
-    # Future module owner: scripts/ArcForge.HtmlReport.ps1
-    function ConvertTo-ArcForgeHtmlFindingList {
-        param (
-            [object[]]$Lines,
-            [string]$EmptyMessage = "No findings captured for this section. See Raw Findings for the complete report output."
-        )
-
-        $FlattenedLines = @(
-            foreach ($Line in $Lines) {
-                if ($null -eq $Line) {
-                    continue
-                }
-
-                if ($Line -is [System.Collections.IEnumerable] -and $Line -isnot [string]) {
-                    foreach ($Item in $Line) {
-                        if ($null -ne $Item) {
-                            [string]$Item
-                        }
-                    }
-                }
-                else {
-                    [string]$Line
-                }
-            }
-        )
-
-        $CleanLines = @(
-            $FlattenedLines |
-                Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-                ForEach-Object { ConvertTo-HtmlSafeText $_ }
-        )
-
-        if (-not $CleanLines -or $CleanLines.Count -eq 0) {
-            return "<li class=`"muted`">$(ConvertTo-HtmlSafeText $EmptyMessage)</li>"
-        }
-
-        return ($CleanLines | ForEach-Object {
-            "<li><code>$_</code></li>"
-        }) -join "`n"
-    }
 
     # Flattens nested line arrays into a simple string array.
     #
