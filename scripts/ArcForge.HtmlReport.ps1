@@ -11,13 +11,15 @@
 # - Do not add JavaScript, CDN assets, remote fonts, remote icons, remote images,
 #   or external dependencies in this module.
 #
-# v0.38 extraction scope:
+# v0.39 extraction scope:
 # - ConvertTo-HtmlSafeText remains the shared HTML encoding helper.
 # - New-StatusClass owns small status-to-CSS-class lookups used by the HTML
 #   report.
 # - New-StatusBadgeHtml owns simple status badge markup used by the HTML report.
 # - ConvertTo-ArcForgeHtmlFindingList owns generic finding-line list markup used
 #   by the HTML report.
+# - Get-ArcForgeFlattenedLines owns generic line flattening used by the HTML
+#   report.
 # - New-ArcForgeHtmlReport remains in Invoke-ArcForgeFirstResponse.ps1 for now.
 # - Future releases can move additional HTML helpers in small, tested slices.
 
@@ -117,3 +119,33 @@ function ConvertTo-ArcForgeHtmlFindingList {
         "<li><code>$_</code></li>"
     }) -join "`n"
 }
+
+# Flattens nested line arrays into a simple string array.
+#
+# Used by readiness scoring so combined sections like System can be counted
+# the same way as single sections like Network or Security.
+function Get-ArcForgeFlattenedLines {
+    param (
+        [object[]]$Lines
+    )
+
+    return @(
+        foreach ($Line in $Lines) {
+            if ($null -eq $Line) {
+                continue
+            }
+
+            if ($Line -is [System.Collections.IEnumerable] -and $Line -isnot [string]) {
+                foreach ($Item in $Line) {
+                    if ($null -ne $Item) {
+                        [string]$Item
+                    }
+                }
+            }
+            else {
+                [string]$Line
+            }
+        }
+    )
+}
+

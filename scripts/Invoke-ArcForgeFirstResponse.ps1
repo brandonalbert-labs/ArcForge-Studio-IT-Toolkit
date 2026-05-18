@@ -1,5 +1,13 @@
-# ArcForge First Response
-# ArcForge First Response Report v0.38
+﻿# ArcForge First Response
+# ArcForge First Response Report v0.39
+#
+# v0.39 HTML flattened finding helper extraction notes:
+# - v0.39 extracts the next small generic HTML report helper into
+#   scripts/ArcForge.HtmlReport.ps1.
+# - Get-ArcForgeFlattenedLines now lives in the HTML helper module.
+# - New-ArcForgeHtmlReport remains in the main script in this release.
+# - No HTML layout, CSS, console strings, TXT strings, scoring, detection logic,
+#   parsing behavior, or report behavior changes are intended.
 #
 # v0.38 HTML finding list helper extraction notes:
 # - v0.38 extracts the next small HTML presentation helper into
@@ -503,43 +511,13 @@ function New-ArcForgeHtmlReport {
     # -------------------------------------------------------------------------
     # 05.01 HTML Safety and Generic Rendering Helpers
     # -------------------------------------------------------------------------
-    # v0.38 note:
-    # - ConvertTo-HtmlSafeText, New-StatusClass, New-StatusBadgeHtml, and
-    #   ConvertTo-ArcForgeHtmlFindingList now live in
-    #   scripts/ArcForge.HtmlReport.ps1.
+    # v0.39 note:
+    # - ConvertTo-HtmlSafeText, New-StatusClass, New-StatusBadgeHtml,
+    #   ConvertTo-ArcForgeHtmlFindingList, and Get-ArcForgeFlattenedLines now
+    #   live in scripts/ArcForge.HtmlReport.ps1.
     # - The remaining nested helpers stay here until later staged extractions.
     # - These helpers are intentionally presentation-only. They convert
     #   already-captured report data into safe static HTML fragments.
-
-    # Flattens nested line arrays into a simple string array.
-    #
-    # Used by readiness scoring so combined sections like System can be counted
-    # the same way as single sections like Network or Security.
-    # Future module owner: scripts/ArcForge.HtmlReport.ps1
-    function Get-ArcForgeFlattenedLines {
-        param (
-            [object[]]$Lines
-        )
-
-        return @(
-            foreach ($Line in $Lines) {
-                if ($null -eq $Line) {
-                    continue
-                }
-
-                if ($Line -is [System.Collections.IEnumerable] -and $Line -isnot [string]) {
-                    foreach ($Item in $Line) {
-                        if ($null -ne $Item) {
-                            [string]$Item
-                        }
-                    }
-                }
-                else {
-                    [string]$Line
-                }
-            }
-        )
-    }
 
     # -------------------------------------------------------------------------
     # 05.02 Readiness Overview Helpers
