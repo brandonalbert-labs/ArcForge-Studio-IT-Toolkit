@@ -1,6 +1,16 @@
 ﻿# ArcForge First Response
-# ArcForge First Response Report v0.32
+# ArcForge First Response Report v0.33
 #
+# v0.33 HTML report extraction prep notes:
+# - v0.33 documents the internal structure of New-ArcForgeHtmlReport before any
+#   future extraction into scripts/ArcForge.HtmlReport.ps1.
+# - scripts/ArcForge.HtmlReport.ps1 is still planned only; no HTML code is
+#   extracted in this release.
+# - This pass adds a compact renderer function inventory and region notes so the
+#   future HTML extraction can happen in smaller, safer pieces.
+# - No console strings, TXT strings, scoring, detection logic, parsing behavior,
+#   HTML, CSS, or report behavior changes are intended.
+
 # v0.32 HTML report boundary prep notes:
 # - v0.32 documents the static HTML rendering layer that sits after
 #   report parsing and HTML-only view model preparation.
@@ -130,7 +140,7 @@
 #   - Should not write console/TXT output or own HTML/CSS presentation.
 #
 # - scripts/ArcForge.HtmlReport.ps1
-#   - Planned; not extracted in v0.32.
+#   - Planned; not extracted in v0.33.
 #   - Future owner for New-ArcForgeHtmlReport.
 #   - Future owner for shared HTML safety helpers.
 #   - Future owner for status badge/severity visual rendering.
@@ -203,12 +213,12 @@
 #    - Extract System-specific cards/details after navigation boundaries are
 #      verified.
 # 7. scripts/ArcForge.HtmlReport.ps1
-#    - Planned; not extracted in v0.32.
+#    - Planned; not extracted in v0.33.
 #    - Save the full HTML template pipeline for last because it is the most
 #      presentation-coupled and fragile.
 #
 # Future Index compatibility note:
-# - The Index is not implemented in v0.31.
+# - The Index is not implemented in v0.33.
 # - Future baseline verification will need clean access to collected endpoint
 #   evidence before it is rendered into TXT or HTML.
 # - Avoid making report rendering the only place where evidence meaning exists.
@@ -411,6 +421,43 @@ function Get-ArcForgeReportSections {
 # - No CDN assets.
 # - No external fonts, icons, images, or dependencies.
 # - No changes to console output, TXT output, readiness scoring, parsing, or checks.
+#
+# v0.33 renderer structure inventory:
+# - Safety/general helpers:
+#   - ConvertTo-HtmlSafeText.
+#   - ConvertTo-ArcForgeHtmlFindingList.
+#   - Get-ArcForgeFlattenedLines.
+# - Readiness and top-summary helpers:
+#   - Get-ArcForgeSectionReadiness.
+#   - New-ArcForgeReadinessOverviewHtml.
+#   - New-ArcForgeEndpointSummaryHtml.
+# - Recommended Actions helpers:
+#   - Get-ArcForgeActionCategory.
+#   - Get-ArcForgeSuggestedAction.
+#   - Get-ArcForgeActionItems.
+#   - New-ArcForgeRecommendedActionsHtml.
+# - System HTML helpers:
+#   - New-ArcForgeSystemEvidenceHtml.
+#   - ConvertTo-ArcForgeSystemEvidenceRecord.
+#   - Get-ArcForgeSystemEvidenceRecord.
+#   - New-ArcForgeSystemEvidenceRowHtml.
+#   - New-ArcForgeSystemStatusLabelRowHtml.
+#   - New-ArcForgeSystemEvidenceOnlyRowHtml.
+#   - New-ArcForgeSystemPanelHtml.
+#   - New-ArcForgeSystemCollapsibleCardHtml.
+#   - New-ArcForgeSystemDetailSectionHtml.
+# - Navigation helpers:
+#   - New-ArcForgeSidebarStatusSegmentsHtml.
+#   - New-ArcForgeReportNavigationHtml.
+# - Final assembly:
+#   - HTML-only data preparation.
+#   - Embedded CSS.
+#   - Static HTML template assembly.
+#   - File write to the requested OutputPath.
+#
+# Extraction note:
+# - Keep these regions intact for v0.33. Later releases can move one renderer
+#   region at a time after confirming report behavior stays identical.
 
 # Generates the self-contained static HTML report.
 #
